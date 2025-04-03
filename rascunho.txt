@@ -1,0 +1,593 @@
+
+// esp_err_t snmp_list_interfaces(const char *ip_address) {
+//     ESP_LOGW(TAG, "Listando interfaces SNMP para %s", ip_address);
+//     in_addr_t addr = inet_addr(ip_address);
+//     if (addr == INADDR_NONE) {
+//         ESP_LOGE(TAG, "IP inválido: %s", ip_address);
+//         return ESP_ERR_INVALID_ARG;
+//     }
+
+//     struct sockaddr_in dest_addr = {
+//         .sin_family = AF_INET,
+//         .sin_port = htons(SNMP_PORT),
+//         .sin_addr.s_addr = addr
+//     };
+
+//     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+//     if (sock < 0) {
+//         ESP_LOGE(TAG, "Erro ao criar socket: errno %d", errno);
+//         return ESP_FAIL;
+//     }
+
+//     ESP_LOGI(TAG, "Socket criado com sucesso (fd=%d)", sock);
+//     ESP_LOGI(TAG, "Enviando pacotes SNMP para %s", ip_address);
+//     ESP_LOGI(TAG, "Procurando interfaces ifDescr.1 a ifDescr.10");
+//     for (int i = 1; i <= 10; i++) {
+//         // OID base: 1.3.6.1.2.1.2.2.1.2.N
+//         uint8_t oid[] = { 0x2b, 0x06, 0x01, 0x02, 0x01, 0x02, 0x02, 0x01, 0x02, (uint8_t)i };
+
+//         uint8_t request[64];
+//         int pos = 0;
+
+//         // Monta o pacote SNMP (versão v2c, community: public)
+//         request[pos++] = 0x30; // Sequence
+//         request[pos++] = 0x00; // Placeholder para tamanho (vamos atualizar depois)
+
+//         request[pos++] = 0x02; request[pos++] = 0x01; request[pos++] = 0x01; // version = v2c
+//         request[pos++] = 0x04; request[pos++] = 0x06;
+//         memcpy(&request[pos], "public", 6); pos += 6;
+
+//         request[pos++] = 0xA0; // GetRequest
+//         request[pos++] = 0x00; // Placeholder tamanho PDU
+
+//         int pdu_start = pos;
+
+//         request[pos++] = 0x02; request[pos++] = 0x04; // request-id
+//         request[pos++] = 0x00; request[pos++] = 0x00;
+//         request[pos++] = 0x00; request[pos++] = i; // ID = i
+
+//         request[pos++] = 0x02; request[pos++] = 0x01; request[pos++] = 0x00; // error
+//         request[pos++] = 0x02; request[pos++] = 0x01; request[pos++] = 0x00; // error index
+
+//         request[pos++] = 0x30; // VarBind list
+//         request[pos++] = 0x00; // Placeholder tamanho varbinds
+
+//         int vb_start = pos;
+
+//         request[pos++] = 0x30; // VarBind
+//         request[pos++] = 0x00; // Placeholder tamanho varbind
+
+//         int vb_inner_start = pos;
+
+//         request[pos++] = 0x06; request[pos++] = sizeof(oid);
+//         memcpy(&request[pos], oid, sizeof(oid)); pos += sizeof(oid);
+
+//         request[pos++] = 0x05; request[pos++] = 0x00; // NULL value
+
+//         // Preenche tamanhos
+//         request[vb_inner_start - 1] = pos - vb_inner_start;
+//         request[vb_start - 1] = pos - vb_start;
+//         request[pdu_start - 1] = pos - pdu_start;
+//         request[1] = pos - 2;
+
+//         // Envia
+//         int err = sendto(sock, request, pos, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+//         if (err < 0) {
+//             ESP_LOGW(TAG, "Falha ao enviar OID ifDescr.%d (errno %d)", i, errno);
+//             continue;
+//         }
+
+//         // Recebe
+//         uint8_t resp[256];
+//         socklen_t from_len = sizeof(dest_addr);
+//         int len = recvfrom(sock, resp, sizeof(resp) - 1, 0, (struct sockaddr *)&dest_addr, &from_len);
+
+//         if (len < 0) {
+//             ESP_LOGW(TAG, "Sem resposta para ifDescr.%d", i);
+//             continue;
+//         }
+
+//         int string_found = 0;
+//         for (int j = 0; j < len - 2; j++) {
+//             if (resp[j] == 0x04) {
+//                 uint8_t str_len = resp[j + 1];
+//                 if (j + 2 + str_len <= len && str_len < 128) {
+//                     if (string_found == 0) {
+//                         // Ignora a primeira (community)
+//                         string_found++;
+//                         continue;
+//                     }
+
+//                     // Segunda string: valor do OID
+//                     char iface[128] = {0};
+//                     memcpy(iface, &resp[j + 2], str_len);
+//                     ESP_LOGI(TAG, "ifDescr.%d: %s", i, iface);
+//                     break;
+//                 }
+//             }
+//         }
+
+//     }
+
+//     close(sock);
+//     return ESP_OK;
+// }
+
+
+// esp_err_t snmp_list_interfaces(const char *ip_address) {
+//         ESP_LOGW(TAG, "Listando interfaces SNMP para %s", ip_address);
+
+//         in_addr_t addr = inet_addr(ip_address);
+//         if (addr == INADDR_NONE) {ESP_LOGE(TAG, "IP inválido: %s", ip_address);return ESP_ERR_INVALID_ARG;}
+
+//         struct sockaddr_in dest_addr = {
+//             .sin_family = AF_INET,
+//             .sin_port = htons(SNMP_PORT),
+//             .sin_addr.s_addr = addr
+//         };
+
+//         int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+//         if (sock < 0) {ESP_LOGE(TAG, "Erro ao criar socket: errno %d", errno);return ESP_FAIL;}
+
+//         ESP_LOGI(TAG, "Socket criado com sucesso (fd=%d)", sock);
+//         ESP_LOGI(TAG, "Enviando pacotes SNMP para %s", ip_address);
+//         ESP_LOGI(TAG, "Procurando interfaces ifDescr.N até não ter resposta...");
+
+//         int i = 1;
+//         while (true) {
+//                   // OID base: 1.3.6.1.2.1.2.2.1.2.N
+//                   uint8_t oid[] = { 0x2b, 0x06, 0x01, 0x02, 0x01, 0x02, 0x02, 0x01, 0x02, (uint8_t)i };
+//                   uint8_t request[64];
+//                   int pos = 0;
+//                   request[pos++] = 0x30; // Sequence
+//                   request[pos++] = 0x00; // placeholder
+//                   request[pos++] = 0x02; request[pos++] = 0x01; request[pos++] = 0x01; // version = v2c
+//                   request[pos++] = 0x04; request[pos++] = 0x06;
+//                   memcpy(&request[pos], "public", 6); pos += 6;
+//                   request[pos++] = 0xA0; // GetRequest
+//                   request[pos++] = 0x00; // placeholder
+//                   int pdu_start = pos;
+//                   request[pos++] = 0x02; request[pos++] = 0x04;
+//                   request[pos++] = 0x00; request[pos++] = 0x00; request[pos++] = 0x00; request[pos++] = i; // request-id
+//                   request[pos++] = 0x02; request[pos++] = 0x01; request[pos++] = 0x00; // error
+//                   request[pos++] = 0x02; request[pos++] = 0x01; request[pos++] = 0x00; // error index
+//                   request[pos++] = 0x30; request[pos++] = 0x00; // varbinds
+//                   int vb_start = pos;
+//                   request[pos++] = 0x30; request[pos++] = 0x00; // varbind
+//                   int vb_inner_start = pos;
+//                   request[pos++] = 0x06; request[pos++] = sizeof(oid);
+//                   memcpy(&request[pos], oid, sizeof(oid)); pos += sizeof(oid);
+//                   request[pos++] = 0x05; request[pos++] = 0x00; // null value
+//                   // Calcula os tamanhos
+//                   request[vb_inner_start - 1] = pos - vb_inner_start;
+//                   request[vb_start - 1] = pos - vb_start;
+//                   request[pdu_start - 1] = pos - pdu_start;
+//                   request[1] = pos - 2;
+//                   // Envia request
+//                   int err = sendto(sock, request, pos, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+//                   if (err < 0) {
+//                       ESP_LOGW(TAG, "Erro ao enviar SNMP GET ifDescr.%d: errno %d", i, errno);
+//                       break;
+//                   }
+//                   // Recebe resposta
+//                   uint8_t resp[256];
+//                   socklen_t from_len = sizeof(dest_addr);
+//                   int len = recvfrom(sock, resp, sizeof(resp) - 1, 0, (struct sockaddr *)&dest_addr, &from_len);
+
+//                   if (len < 0) {
+//                       ESP_LOGI(TAG, "Fim das interfaces (ifDescr.%d sem resposta)", i);
+//                       break;
+//                   }
+//                   // Parser SNMP simples
+//                   int string_found = 0;
+//                   bool interface_found = false;
+
+//                   for (int j = 0; j < len - 2; j++) {
+//                       if (resp[j] == 0x04) {
+//                           uint8_t str_len = resp[j + 1];
+//                           if (j + 2 + str_len <= len && str_len < 128) {
+//                               if (string_found == 0) {
+//                                   string_found++;
+//                                   continue;
+//                               }
+
+//                               char iface[128] = {0};
+//                               memcpy(iface, &resp[j + 2], str_len);
+//                               ESP_LOGI(TAG, "ifDescr.%d: %s", i, iface);
+//                               interface_found = true;
+//                               break;
+//                           }
+//                       }
+//                   }
+
+//                   if (!interface_found) {
+//                       ESP_LOGI(TAG, "Fim das interfaces (ifDescr.%d sem dados)", i);
+//                       break;
+//                   }
+
+//                   i++;
+//         }
+
+//         close(sock);
+//         return ESP_OK;
+// }
+
+//-------------------------------------------------------------------------------------------------------------------
+
+esp_err_t validate_ip(const char *ip_address, in_addr_t *out_ip) {
+    *out_ip = inet_addr(ip_address);
+    if (*out_ip == INADDR_NONE) {
+        ESP_LOGE(TAG, "IP inválido: %s", ip_address);
+        return ESP_ERR_INVALID_ARG;
+    }
+    ESP_LOGI(TAG, "IP válido: %s", ip_address);
+    return ESP_OK;
+}
+
+int create_snmp_socket(void) {
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock < 0) {
+        ESP_LOGE(TAG, "Erro ao criar socket: errno %d", errno);
+    } else {
+        ESP_LOGI(TAG, "Socket criado com sucesso (fd=%d)", sock);
+    }
+    return sock;
+}
+
+esp_err_t send_snmp_get_request(int sock, struct sockaddr_in *dest_addr) {
+    uint8_t snmp_get_request[] = {
+        0x30, 0x2e,
+          0x02, 0x01, 0x01,
+          0x04, 0x06, 'p','u','b','l','i','c',
+          0xa0, 0x21,
+            0x02, 0x04, 0x00, 0x00, 0x00, 0x01,
+            0x02, 0x01, 0x00,
+            0x02, 0x01, 0x00,
+            0x30, 0x13,
+              0x30, 0x11,
+                0x06, 0x0b,
+                  0x2b, 0x06, 0x01, 0x02, 0x01, 0x02, 0x02, 0x01, 0x02, 0x01,
+                0x05, 0x00
+    };
+
+    int err = sendto(sock, snmp_get_request, sizeof(snmp_get_request), 0,
+                     (struct sockaddr *)dest_addr, sizeof(*dest_addr));
+
+    if (err < 0) {
+        ESP_LOGE(TAG, "Erro ao enviar SNMP request: errno %d", errno);
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "SNMP request enviado com sucesso (%d bytes)", err);
+    return ESP_OK;
+}
+
+esp_err_t receive_snmp_response(int sock) {
+    uint8_t rx_buffer[256];
+    struct sockaddr_in from_addr;
+    socklen_t from_len = sizeof(from_addr);
+
+    int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0,
+                       (struct sockaddr *)&from_addr, &from_len);
+
+    if (len < 0) {
+        ESP_LOGE(TAG, "Erro ao receber resposta SNMP: errno %d", errno);
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Resposta recebida com %d bytes:", len);
+
+    for (int i = 0; i < len; ++i) {
+        printf("%02x ", rx_buffer[i]);
+        if ((i + 1) % 16 == 0) printf("\n");
+    }
+    printf("\n");
+
+    return ESP_OK;
+}
+
+
+
+
+void f_ConsumidorInterfaces(void *args) {
+        ESP_LOGI(TAG, "Tarefa consumidora de interfaces SNMP iniciada");
+        char *status = NULL;
+        while (1) {
+            if (xQueueReceive(qInterface, &status, portMAX_DELAY) == pdPASS) {
+                //ESP_LOGI(TAG, "Status recebido da fila: %s", status);
+                // Libera a string se for dinâmica
+                free(status);  // Só se o producer alocar dinamicamente
+            }
+        }
+        vTaskDelete(NULL);
+}
+
+void f_ReadInterfaces(void *args) {
+    ESP_LOGW(TAG, "Iniciando monitoramento automático de interfaces SNMP");
+    qInterface = xQueueCreate(10, sizeof(char *));
+    cJSON *json = read_json_file("/snmp-interface-select.json");
+
+    if (!json) {
+        ESP_LOGE(TAG, "Erro ao ler JSON de interfaces selecionadas");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    IPInfo dispositivos[MAX_IPS] = {0};
+    int total_ips = 0;
+
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, json) {
+        const char *key = item->string;
+
+        if (strncmp(key, "IP[", 3) == 0) {
+            char idx_str[8] = {0};
+            sscanf(key, "IP[%[^]]", idx_str);
+
+            char ip_key[16], index_key[24], disp_key[40], tipo_key[40];
+            snprintf(ip_key, sizeof(ip_key), "IP[%s]", idx_str);
+            snprintf(index_key, sizeof(index_key), "index[%s]", idx_str);
+            snprintf(disp_key, sizeof(disp_key), "displaySelecionado[%s]", idx_str);
+            snprintf(tipo_key, sizeof(tipo_key), "tipoSelecionado[%s]", idx_str);
+
+            cJSON *ip_node = cJSON_GetObjectItem(json, ip_key);
+            cJSON *idx_node = cJSON_GetObjectItem(json, index_key);
+            cJSON *disp_node = cJSON_GetObjectItem(json, disp_key);
+            cJSON *tipo_node = cJSON_GetObjectItem(json, tipo_key);
+
+            if (ip_node && idx_node && disp_node && tipo_node &&
+                cJSON_IsString(ip_node) && cJSON_IsString(idx_node) &&
+                cJSON_IsString(disp_node) && cJSON_IsString(tipo_node)) {
+
+                const char *ip = ip_node->valuestring;
+                int index = atoi(idx_node->valuestring);
+                const char *display = disp_node->valuestring;
+                const char *tipo_str = tipo_node->valuestring;
+
+                TipoSelecionado tipo = (strcasecmp(tipo_str, "Trafego") == 0) ? TIPO_TRAFEGO : TIPO_INTERFACE;
+
+                int ip_idx = -1;
+                for (int i = 0; i < total_ips; i++) {
+                    if (strcmp(dispositivos[i].ip, ip) == 0) {
+                        ip_idx = i;
+                        break;
+                    }
+                }
+
+                if (ip_idx == -1 && total_ips < MAX_IPS) {
+                    dispositivos[total_ips].ip = strdup(ip);
+                    ip_idx = total_ips++;
+                }
+
+                if (ip_idx != -1) {
+                    if (tipo == TIPO_INTERFACE && dispositivos[ip_idx].total_oids < MAX_OIDS) {
+                        // Gera OID único para status
+                        char oid_str[64];
+                        snprintf(oid_str, sizeof(oid_str), "%s%d", f_GetBaseOID(MIB_IF_OPER_STATUS), index);
+                    
+                        int idx = dispositivos[ip_idx].total_oids++;
+                        dispositivos[ip_idx].oids[idx].oid = strdup(oid_str);
+                        dispositivos[ip_idx].oids[idx].display = strdup(display);
+                        dispositivos[ip_idx].oids[idx].tipo = tipo;
+                    
+                    } else if (tipo == TIPO_TRAFEGO && dispositivos[ip_idx].total_oids < MAX_OIDS - 2) {
+                        const char *base_in = f_GetBaseOID(MIB_IF_IN_OCTETS);
+                        const char *base_out = f_GetBaseOID(MIB_IF_OUT_OCTETS);
+                    
+                        char oid_in[64], oid_out[64];
+                        snprintf(oid_in, sizeof(oid_in), "%s%d", base_in, index);
+                        snprintf(oid_out, sizeof(oid_out), "%s%d", base_out, index);
+                    
+                        int idx_in = dispositivos[ip_idx].total_oids++;
+                        dispositivos[ip_idx].oids[idx_in].oid = strdup(oid_in);
+                        dispositivos[ip_idx].oids[idx_in].display = strdup(display);
+                        dispositivos[ip_idx].oids[idx_in].tipo = tipo;
+                    
+                        int idx_out = dispositivos[ip_idx].total_oids++;
+                        dispositivos[ip_idx].oids[idx_out].oid = strdup(oid_out);
+                        dispositivos[ip_idx].oids[idx_out].display = strdup(display);
+                        dispositivos[ip_idx].oids[idx_out].tipo = tipo;
+
+                        ESP_LOGI(TAG, "OID RX: %s | OID TX: %s", oid_in, oid_out);
+
+                    }
+                    
+                }
+            }
+        }
+    }
+
+    cJSON_Delete(json);
+    
+    ESP_LOGW(TAG, "Total de IPs: %d", total_ips);
+
+    // ======= Consulta SNMP =========
+    while (!StopReadInterface) {
+        for (int i = 0; i < total_ips; i++) {
+            //ESP_LOGW(TAG, "Lendo IP: %s", dispositivos[i].ip);
+                int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                struct timeval timeout = {.tv_sec = 2, .tv_usec = 0};
+                setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+                struct sockaddr_in dest = {
+                    .sin_family = AF_INET,
+                    .sin_port = htons(161),
+                    .sin_addr.s_addr = inet_addr(dispositivos[i].ip)
+                };
+
+                // Separa por tipo
+                const char *oids_status[MAX_OIDS] = {0};
+                const char *oids_trafego[MAX_OIDS] = {0};
+                int status_count = 0, trafego_count = 0;
+                int index_map[MAX_OIDS] = {0};
+
+                for (int j = 0; j < dispositivos[i].total_oids; j++) {
+                    if (dispositivos[i].oids[j].tipo == TIPO_INTERFACE) {
+                        oids_status[status_count] = dispositivos[i].oids[j].oid;
+                        index_map[status_count++] = j;
+                    } else if (dispositivos[i].oids[j].tipo == TIPO_TRAFEGO) {
+                        oids_trafego[trafego_count] = dispositivos[i].oids[j].oid;
+                        index_map[trafego_count + MAX_OIDS/2] = j;
+                        
+                        trafego_count++;  // 👈 faltava isso!
+                    }
+                }
+                char *status_result[MAX_OIDS] = {0};
+                if (status_count > 0) {
+                    f_QueryIfStatusMulti(sock, &dest, oids_status, status_count, status_result);
+                    for (int k = 0; k < status_count; k++) {
+                        int j = index_map[k];
+                        ESP_LOGI(TAG, "IP: %s | OID: %s | Tipo: Interface | Display: %s | Resultado: %s",
+                                dispositivos[i].ip,
+                                dispositivos[i].oids[j].oid,
+                                dispositivos[i].oids[j].display,
+                                status_result[k]);
+
+                        if (xQueueSend(qInterface, &status_result[k], pdMS_TO_TICKS(100)) != pdPASS) {
+                            ESP_LOGW(TAG, "Falha ao enviar status para a fila");
+                        }
+                    }
+                }
+
+                // Tráfego
+                uint32_t trafego_result[MAX_OIDS] = {0};
+                if (trafego_count > 0) {
+                    f_QueryTrafficMulti(sock, &dest, oids_trafego, trafego_count, trafego_result);
+                    for (int k = 0; k < trafego_count; k++) {
+                        int j = index_map[k + MAX_OIDS/2];
+                        if (trafego_result[k] != 0xFFFFFFFF) {
+                            ESP_LOGI(TAG, "IP: %s | OID: %s | Tipo: Trafego | Display: %s | Count: %d |Resultado: %lu bytes",
+                                    dispositivos[i].ip,
+                                    dispositivos[i].oids[j].oid,
+                                    dispositivos[i].oids[j].display,
+                                    trafego_count,
+                                    trafego_result[k]);
+                        } else {
+                            ESP_LOGW(TAG, "Erro ao ler tráfego da porta (OID: %s)", dispositivos[i].oids[j].oid);
+                        }
+                    }
+                }
+
+                close(sock);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+
+    ESP_LOGI(TAG, "Encerrando leitura automática de interfaces SNMP");
+    vTaskDelete(NULL);
+}
+
+void f_ReadInterfaces(void *args) {
+    ESP_LOGI(TAG, "Iniciando monitoramento automático de interfaces SNMP");
+    qInterface = xQueueCreate(10, sizeof(char *));
+    cJSON *json = read_json_file("/snmp-interface-select.json");
+
+    if (!json) {
+        ESP_LOGE(TAG, "Erro ao ler JSON de interfaces selecionadas");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    IPInfo dispositivos[MAX_IPS] = {0};
+    int total_ips = 0;
+
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, json) {
+        const char *key = item->string;
+
+        if (strncmp(key, "oid[", 4) == 0) {
+            char index[8] = {0};
+            sscanf(key, "oid[%[^]]", index);
+
+            // Monta as chaves relacionadas
+            char ip_key[16], disp_key[40];
+            snprintf(ip_key, sizeof(ip_key), "IP[%s]", index);
+            snprintf(disp_key, sizeof(disp_key), "displaySelecionado[%s]", index);
+
+            // Pega valores do JSON
+            cJSON *ip_node = cJSON_GetObjectItem(json, ip_key);
+            cJSON *disp_node = cJSON_GetObjectItem(json, disp_key);
+
+            if (ip_node && cJSON_IsString(ip_node) &&
+                item && cJSON_IsString(item) &&
+                disp_node && cJSON_IsString(disp_node)) {
+
+                const char *ip = ip_node->valuestring;
+                const char *oid = item->valuestring;
+                const char *display = disp_node->valuestring;
+
+                int ip_idx = -1;
+
+                // Verifica se IP já está na lista
+                for (int i = 0; i < total_ips; i++) {
+                    if (strcmp(dispositivos[i].ip, ip) == 0) {
+                        ip_idx = i;
+                        break;
+                    }
+                }
+
+                // Se IP novo, adiciona
+                if (ip_idx == -1 && total_ips < MAX_IPS) {
+                    dispositivos[total_ips].ip = strdup(ip);
+                    ip_idx = total_ips++;
+                }
+
+                // Adiciona OID e display ao IP correspondente
+                if (ip_idx != -1 && dispositivos[ip_idx].total_oids < MAX_OIDS) {
+                    int oid_idx = dispositivos[ip_idx].total_oids++;
+                    dispositivos[ip_idx].oids[oid_idx].oid = strdup(oid);
+                    dispositivos[ip_idx].oids[oid_idx].display = strdup(display);
+                }
+            }
+        }
+    }
+
+    cJSON_Delete(json);
+
+    // Loop de leitura contínua
+    while (!StopReadInterface) {
+        for (int i = 0; i < total_ips; i++) {
+            int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+            struct timeval timeout = {.tv_sec = 2, .tv_usec = 0};
+            setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+            struct sockaddr_in dest = {
+                .sin_family = AF_INET,
+                .sin_port = htons(161),
+                .sin_addr.s_addr = inet_addr(dispositivos[i].ip)
+            };
+
+            char *oids[MAX_OIDS] = {0};
+            for (int j = 0; j < dispositivos[i].total_oids; j++) {
+                oids[j] = dispositivos[i].oids[j].oid;
+            }
+
+            char *statuses[MAX_OIDS] = {0};
+            f_QueryIfStatusMulti(sock, &dest, (const char **)oids, dispositivos[i].total_oids, statuses);
+
+            for (int j = 0; j < dispositivos[i].total_oids; j++) {
+                char *status = statuses[j];
+                if (status) {
+                    ESP_LOGI(TAG, "IP: %s | OID: %s | Display: %s | Resultado: %s",
+                             dispositivos[i].ip,
+                             dispositivos[i].oids[j].oid,
+                             dispositivos[i].oids[j].display,
+                             status);
+
+                    if (xQueueSend(qInterface, &status, pdMS_TO_TICKS(100)) != pdPASS) {
+                        ESP_LOGW(TAG, "Falha ao enviar status para a fila");
+                    }
+                }
+            }
+
+            close(sock);
+        }
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+
+    ESP_LOGI(TAG, "Encerrando leitura automática de interfaces SNMP");
+    vTaskDelete(NULL);
+}
+
+
