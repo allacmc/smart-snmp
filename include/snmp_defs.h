@@ -16,6 +16,8 @@ typedef struct {
 
 typedef struct {
     char *ip;
-    OIDInfo oids[MAX_OIDS];
+    int port;  // 👈 novo campo
     int total_oids;
+    OIDInfo oids[MAX_OIDS];
 } IPInfo;
+

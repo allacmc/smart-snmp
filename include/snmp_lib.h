@@ -12,6 +12,8 @@ char *print_oid_readable(const uint8_t *oid, size_t oid_len);
 bool parse_snmp_uint32_value(const uint8_t *buffer, int len, uint32_t *out_value);
 bool parse_snmp_counter32_value(const uint8_t *packet, int length, uint32_t *out_value);
 
+void f_FormatTraffic(char *out, size_t len, float kbps);
+
 typedef enum {
     MIB_IF_OPER_STATUS,  // .1.3.6.1.2.1.2.2.1.8
     MIB_IF_IN_OCTETS,    // .1.3.6.1.2.1.2.2.1.10

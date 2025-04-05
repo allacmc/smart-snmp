@@ -254,3 +254,28 @@ const char *f_GetBaseOID(MIBMetric metric) {
     }
 }
 
+
+void f_FormatTraffic(char *out, size_t len, float kbps) {
+    if (kbps >= 1000000.0f) {
+        snprintf(out, len, "%.2f Gbps", kbps / 1000000.0f);
+    } else if (kbps >= 1000.0f) {
+        snprintf(out, len, "%.2f Mbps", kbps / 1000.0f);
+    } else {
+        snprintf(out, len, "%.2f kbps", kbps);
+    }
+}
+
+
+// char *f_FormatTraffic(float kbps) {
+//     static char buffer[32];
+
+//     if (kbps >= 1000000.0f) {
+//         snprintf(buffer, sizeof(buffer), "%.2f Gbps", kbps / 1000000.0f);
+//     } else if (kbps >= 1000.0f) {
+//         snprintf(buffer, sizeof(buffer), "%.2f Mbps", kbps / 1000.0f);
+//     } else {
+//         snprintf(buffer, sizeof(buffer), "%.2f kbps", kbps);
+//     }
+
+//     return buffer;
+// }

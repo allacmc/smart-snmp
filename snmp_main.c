@@ -10,6 +10,7 @@
 #include "../../enervision_manager/include/f_wifi.h"
 #include "../../enervision_manager/include/f_configfile.h"
 #include "../../enervision_manager/include/f_safefree.h"
+#include <arpa/inet.h>  // já incluso pelo netdb/socket normalmente
 
 #include "snmp_read-interface.h"
 #include "snmp_defs.h"
@@ -38,14 +39,15 @@ char* clean_json_string(const char* input) {
 char* f_scan_snmp_status_cb() {
     char *html_content = malloc(512); // Aloca memória dinamicamente
     if (html_content != NULL) {
+        int InterfaceDiscovery = f_iDiscoveryCount();
         if(StatusScan){
-            snprintf(html_content, 512, "{\"status\": \"run\"}");
+            snprintf(html_content, 512, "{\"status\": \"run\", \"interfaces_discovered\": %d}", InterfaceDiscovery);
         }else{      
-            snprintf(html_content, 512, "{\"status\": \"stop\"}");
+            snprintf(html_content, 512, "{\"status\": \"stop\", \"interfaces_discovered\": %d}", InterfaceDiscovery);
         }
         char* clean_html_content = clean_json_string(html_content);
         free(html_content);
-        return clean_html_content;
+        return clean_html_content;  
     }
     return NULL;
 }
@@ -63,24 +65,33 @@ char* f_scan_snmp_cb() {
 }
 
 void f_startListInterfaces(void * args) {
-    const char * ip_address  = f_KeyValue("DeviceIP", "/snmp-scan.json");
-    while (!f_Wifi_Conectado()){vTaskDelay(pdMS_TO_TICKS(100));}
-    ESP_LOGI(TAG, "Iniciando task de Scan SNMP para %s", ip_address);
-    xTaskCreate(f_ScanInterface, "f_ScanInterface", 6000, (void *)ip_address, 5, NULL);
-    vTaskDelete(NULL);    
+        while (!f_Wifi_Conectado()){vTaskDelay(pdMS_TO_TICKS(100));}
+        xTaskCreate(f_ScanInterface, "f_ScanInterface", 6000, NULL, 5, NULL);
+        vTaskDelete(NULL);    
 }
 
-void f_ScanInterface(const char *ip_address) {
-    StatusScan = true;
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    esp_err_t result = f_ListInterfaces(ip_address);
-    if(result == ESP_OK) {
-        ESP_LOGI(TAG, "Listagem de interfaces concluída.");
-    } else {
-        ESP_LOGE(TAG, "Erro ao listar interfaces: %s", esp_err_to_name(result));
-    }
-    StatusScan = false;
-    vTaskDelete(NULL);
+void f_ScanInterface(void *args) {
+        StatusScan = true;
+        f_stopReadInterfaces();
+        while (f_StatusReadInterface() != STOPPED) {vTaskDelay(pdMS_TO_TICKS(100));}
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        const char * ip_address  = f_KeyValue("DeviceIP", "/snmp-scan.json");
+        if (!ip_address || inet_addr(ip_address) == INADDR_NONE) { ESP_LOGE(TAG, "Endereço IP inválido: %s", ip_address ? ip_address : "NULL"); StatusScan = false;vTaskDelete(NULL); return; }
+        const char * port_str = f_KeyValue("DevicePort", "/snmp-scan.json");
+        if (!port_str) { ESP_LOGE(TAG, "Campo DevicePort não encontrado."); vTaskDelete(NULL); return; }
+        char *endptr;
+        long port = strtol(port_str, &endptr, 10);
+        if (endptr == port_str || port <= 0 || port > 65535) { ESP_LOGE(TAG, "Porta SNMP inválida: '%s'", port_str); StatusScan = false;vTaskDelete(NULL); return; }
+        int timeout_val = f_KeyValueInt("Timeout", "/snmp-scan.json");
+        if (timeout_val < 2 || timeout_val > 30) { ESP_LOGE(TAG, "Timeout inválido: %d. O valor deve estar entre 2 e 20.", timeout_val); StatusScan = false;vTaskDelete(NULL); return; }
+        int maxInterface_val = f_KeyValueInt("MaxInterface", "/snmp-scan.json");
+        if (maxInterface_val < 1 || maxInterface_val > 128) { ESP_LOGE(TAG, "Timeout inválido: %d. O valor deve estar entre 2 e 20.", maxInterface_val); StatusScan = false;vTaskDelete(NULL); return; }
+        ESP_LOGI(TAG, "Iniciando task de Scan SNMP para %s na porta %ld, timeout %d, max-interface %d", ip_address, port, timeout_val, maxInterface_val);
+        esp_err_t result = f_ListInterfaces(ip_address, port, timeout_val, maxInterface_val);
+        int discovered_interfaces = f_iDiscoveryCount();
+        ESP_LOGI(TAG, "Listagem de interfaces %s. Interfaces descobertas: %d",(result == ESP_OK) ? "concluída" : esp_err_to_name(result), discovered_interfaces);
+        StatusScan = false;
+        vTaskDelete(NULL);
 }
 
 void f_startSelectInterfaces() {
@@ -102,10 +113,7 @@ static void f_SelectInterfaces(void *args) {
                     }
             } else if (strcmp(snmp_action->valuestring, "adicionar") == 0) {
                     cJSON *json_existente = read_json_file("/snmp-interface-select.json");
-                    if (!json_existente) {
-                        ESP_LOGW(TAG, "Arquivo existente não encontrado. Criando novo.");
-                        json_existente = cJSON_CreateObject();
-                    }
+                    if (!json_existente) { ESP_LOGW(TAG, "Arquivo existente não encontrado. Criando novo."); json_existente = cJSON_CreateObject(); }
                     cJSON *item = NULL;
                     cJSON_ArrayForEach(item, json_novo) {
                         const char *key = item->string;
@@ -121,21 +129,24 @@ static void f_SelectInterfaces(void *args) {
                         ESP_LOGE(TAG, "Erro ao atualizar o arquivo snmp-interface-select.json");
                     }
                     cJSON_Delete(json_existente);
-            } else {
-                    ESP_LOGW(TAG, "Ação SNMP desconhecida: %s", snmp_action->valuestring);
-            }
+            } 
             cJSON_Delete(json_novo);
             vTaskDelete(NULL);
 }
 
+TaskHandle_t hReadInterface = NULL;
+
 void f_startReadInterfaces() {
-        ESP_LOGW(TAG, "Iniciando tarefa de leitura de status da Interface SNMP");
-        while (!f_Wifi_Conectado()){vTaskDelay(pdMS_TO_TICKS(100));}
-        xTaskCreate(f_ReadInterfaces, "f_ReadInterfaces", 5500, NULL, 5, NULL);
+    while (!f_Wifi_Conectado()){vTaskDelay(pdMS_TO_TICKS(100));}
+    if (hReadInterface == NULL) {
+        xTaskCreate(f_ReadInterfaces, "f_ReadInterfaces", 5800, NULL, 5, &hReadInterface);
+    } else {
+        ESP_LOGW(TAG, "Tarefa de leitura de status da Interface SNMP já está em execução");
+    }
 }
 
 void f_ReadInterfaces(void *args) {
-        ESP_LOGW(TAG, "Iniciando monitoramento automático de interfaces SNMP");
+        ESP_LOGI(TAG, "Iniciando monitoramento automático de interfaces SNMP");
         IPInfo dispositivos[MAX_IPS] = {0};
         int total_ips = f_PopulaDispositivos(dispositivos, MAX_IPS);
         if (total_ips <= 0) {
@@ -146,6 +157,14 @@ void f_ReadInterfaces(void *args) {
         f_ExecutaLeituraSNMP(dispositivos, total_ips);
         f_LiberaDispositivos(dispositivos, total_ips);
         ESP_LOGI(TAG, "Encerrando leitura automática de interfaces SNMP");
+        hReadInterface = NULL;
         vTaskDelete(NULL);
 }
 
+f_StatusReadInterface_t f_StatusReadInterface() {
+    if (hReadInterface != NULL) {
+        return RUNNING;
+    } else {
+        return STOPPED;
+    }
+}

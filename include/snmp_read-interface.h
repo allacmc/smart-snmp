@@ -18,5 +18,6 @@
 int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos);
 void f_ExecutaLeituraSNMP(IPInfo *dispositivos, int total_ips);
 void f_LiberaDispositivos(IPInfo *dispositivos, int total_ips);
+void f_stopReadInterfaces();
 
 #endif // SNMP_READ_INTERFACE_H

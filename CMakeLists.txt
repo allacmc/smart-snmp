@@ -4,7 +4,7 @@ idf_component_register(
     SRCS ${SOURCES_C}
     INCLUDE_DIRS "include"
     
-    REQUIRES json
+    REQUIRES json esp_timer
 
 )
                    
