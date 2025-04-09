@@ -139,7 +139,7 @@ TaskHandle_t hReadInterface = NULL;
 void f_startReadInterfaces() {
     while (!f_Wifi_Conectado()){vTaskDelay(pdMS_TO_TICKS(100));}
     if (hReadInterface == NULL) {
-        xTaskCreate(f_ReadInterfaces, "f_ReadInterfaces", 5800, NULL, 5, &hReadInterface);
+        xTaskCreate(f_ReadInterfaces, "f_ReadInterfaces", 6500, NULL, 5, &hReadInterface);
     } else {
         ESP_LOGW(TAG, "Tarefa de leitura de status da Interface SNMP já está em execução");
     }

@@ -19,5 +19,9 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos);
 void f_ExecutaLeituraSNMP(IPInfo *dispositivos, int total_ips);
 void f_LiberaDispositivos(IPInfo *dispositivos, int total_ips);
 void f_stopReadInterfaces();
+int f_BuscaIndiceIP(IPInfo *dispositivos, int total, const char *ip);
+// bool f_IsPPPoETarget(const char *ip, int port);
+// int f_GetPPPoEDisplay(const char *ip, int port);
+// int f_GetUptimeDisplay(const char *ip, int port);
 
 #endif // SNMP_READ_INTERFACE_H

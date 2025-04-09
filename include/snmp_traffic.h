@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "lwip/sockets.h"
+#include "snmp_defs.h"
 
 #define MAX_TRAFFIC_HISTORY 64
 
@@ -20,5 +22,8 @@ void init_traffic_history(void);
 // Calcula e loga a taxa de tráfego
 
 bool calcular_taxa_trafego(const char *ip, int display, uint32_t in_atual, uint32_t out_atual, float *out_kbps_in, float *out_kbps_out);
+void f_ProcessaTrafegoSNMP(int sock, IPInfo *device, struct sockaddr_in *dest);
+bool f_RegistraOIDTrafego(IPInfo *device, const char *display, int index);
+
 
 #endif // SNMP_TRAFFIC_H

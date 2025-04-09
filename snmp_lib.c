@@ -157,10 +157,6 @@ bool parse_snmp_uint32_value(const uint8_t *buffer, int len, uint32_t *out_value
     return false;
 }
 
-
-
-
-
 char *print_oid_readable(const uint8_t *oid, size_t oid_len) {
     if (!oid || oid_len < 2) return NULL;
 
@@ -265,17 +261,120 @@ void f_FormatTraffic(char *out, size_t len, float kbps) {
     }
 }
 
+int build_snmp_getnext(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t oid_len, uint8_t request_id) {
+    if (max_len < 64 || oid_len > 32) return -1;
 
-// char *f_FormatTraffic(float kbps) {
-//     static char buffer[32];
+    int pos = 0;
 
-//     if (kbps >= 1000000.0f) {
-//         snprintf(buffer, sizeof(buffer), "%.2f Gbps", kbps / 1000000.0f);
-//     } else if (kbps >= 1000.0f) {
-//         snprintf(buffer, sizeof(buffer), "%.2f Mbps", kbps / 1000.0f);
-//     } else {
-//         snprintf(buffer, sizeof(buffer), "%.2f kbps", kbps);
-//     }
+    buffer[pos++] = 0x30; // Sequence
+    buffer[pos++] = 0x00; // Placeholder total length
 
-//     return buffer;
-// }
+    buffer[pos++] = 0x02; buffer[pos++] = 0x01; buffer[pos++] = 0x01; // SNMP v2c
+
+    buffer[pos++] = 0x04; buffer[pos++] = 0x06;
+    memcpy(&buffer[pos], "public", 6); pos += 6;
+
+    buffer[pos++] = 0xA1; buffer[pos++] = 0x00; // ← GETNEXT (A1)
+    int pdu_start = pos;
+
+    buffer[pos++] = 0x02; buffer[pos++] = 0x04;
+    buffer[pos++] = 0x00; buffer[pos++] = 0x00;
+    buffer[pos++] = 0x00; buffer[pos++] = request_id;
+
+    buffer[pos++] = 0x02; buffer[pos++] = 0x01; buffer[pos++] = 0x00; // error
+    buffer[pos++] = 0x02; buffer[pos++] = 0x01; buffer[pos++] = 0x00; // error index
+
+    buffer[pos++] = 0x30; buffer[pos++] = 0x00; // VarBind list
+    int vb_start = pos;
+
+    buffer[pos++] = 0x30; buffer[pos++] = 0x00; // VarBind
+    int vb_inner_start = pos;
+
+    buffer[pos++] = 0x06; buffer[pos++] = oid_len;
+    memcpy(&buffer[pos], oid, oid_len); pos += oid_len;
+
+    buffer[pos++] = 0x05; buffer[pos++] = 0x00; // NULL
+
+    // Tamanhos
+    buffer[vb_inner_start - 1] = pos - vb_inner_start;
+    buffer[vb_start - 1] = pos - vb_start;
+    buffer[pdu_start - 1] = pos - pdu_start;
+    buffer[1] = pos - 2;
+
+    return pos;
+}
+
+bool parse_oid_from_packet(const uint8_t *packet, int len, uint8_t *out_oid, size_t *out_len) {
+    if (!packet || len <= 0 || !out_oid || !out_len) return false;
+
+    // procura pela sequência "30 ?? 30 ?? 06 ?? <OID>"
+    for (int i = 0; i < len - 6; i++) {
+        if (packet[i] == 0x30 &&             // sequence (VarBindList)
+            packet[i+2] == 0x30 &&           // sequence (VarBind)
+            packet[i+4] == 0x06) {           // OID
+
+            uint8_t oid_len = packet[i+5];
+            if (i + 6 + oid_len > len) return false;
+
+            memcpy(out_oid, &packet[i + 6], oid_len);
+            *out_len = oid_len;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+char *print_oid_readable_from_packet(const uint8_t *packet, int len) {
+    static char oid_str[256];
+    uint8_t oid[32];
+    size_t oid_len = 0;
+
+    if (!parse_oid_from_packet(packet, len, oid, &oid_len)) return NULL;
+
+    size_t pos = 0;
+    uint8_t first = oid[0];
+    pos += snprintf(oid_str + pos, sizeof(oid_str) - pos, "%u.%u", first / 40, first % 40);
+
+    for (size_t i = 1; i < oid_len; ) {
+        uint32_t value = 0;
+        do {
+            value = (value << 7) | (oid[i] & 0x7F);
+        } while ((oid[i++] & 0x80) && i < oid_len);
+        pos += snprintf(oid_str + pos, sizeof(oid_str) - pos, ".%lu", value);
+    }
+
+    oid_str[sizeof(oid_str) - 1] = '\0';
+    return oid_str;
+}
+
+void f_FormatUptime(uint32_t ticks, char *out_str, size_t out_len) {
+        uint32_t total_secs = ticks / 100;
+        uint32_t days = total_secs / 86400;
+        uint32_t hours = (total_secs % 86400) / 3600;
+        uint32_t minutes = (total_secs % 3600) / 60;
+        uint32_t seconds = total_secs % 60;
+
+        snprintf(out_str, out_len, "%lu dias, %02lu:%02lu:%02lu", days, hours, minutes, seconds);
+}
+
+bool parse_snmp_timeticks_value(const uint8_t *packet, int length, uint32_t *out_value) {
+    if (!packet || !out_value || length <= 0) return false;
+
+    for (int i = 0; i < length - 2; i++) {
+        if (packet[i] == 0x43) {  // ← tipo TimeTicks (Application[3])
+            uint8_t len = packet[i + 1];
+            if (len > 5 || i + 2 + len > length) return false;
+
+            uint32_t value = 0;
+            for (int j = 0; j < len; j++) {
+                value = (value << 8) | packet[i + 2 + j];
+            }
+
+            *out_value = value;
+            return true;
+        }
+    }
+
+    return false;
+}

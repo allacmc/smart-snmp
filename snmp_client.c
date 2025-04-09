@@ -1,8 +1,9 @@
+#include <stdlib.h>  // pra strtol, strtof etc.
 #include "snmp_client.h"
 #include "snmp_lib.h"
+#include "snmp_defs.h"
 #include "esp_log.h"
 #include "string.h"
-#include "snmp_lib.h"
 #include "lwip/sockets.h"
 #include <string.h>
 #include <errno.h>
@@ -14,6 +15,8 @@
 static const char *TAG = "SNMP_CLIENT";
 static bool PrintDebug = false;
 int InterfaceDiscovery = 0;
+
+//#define TERMO_PPPOE "<pppoe-" // Testado com mikrotik ver como vai ser com outros.
 
 esp_err_t f_ListInterfaces(const char *ip_address, long port, int timeout_val, int max_interfaces) {
           in_addr_t addr = inet_addr(ip_address);
@@ -199,20 +202,12 @@ esp_err_t f_QueryTrafficMulti(int sock, struct sockaddr_in *dest, const char **o
         uint8_t oid[32];
         size_t oid_len = 0;
 
-        if (!parse_oid_string(oids[i], oid, &oid_len)) {
-            ESP_LOGW(TAG, "OID inválido: %s", oids[i]);
-            out_values[i] = 0xFFFFFFFF;  // Indica erro
-            continue;
-        }
+        if (!parse_oid_string(oids[i], oid, &oid_len)) { ESP_LOGW(TAG, "OID inválido: %s", oids[i]); out_values[i] = 0xFFFFFFFF; continue; }
 
         uint8_t req[64];
         int req_len = build_snmp_get(req, sizeof(req), oid, oid_len, 200 + i);  // ID 200+ pra evitar conflito
 
-        if (req_len <= 0) {
-            ESP_LOGW(TAG, "Falha ao montar pacote SNMP para %s", oids[i]);
-            out_values[i] = 0xFFFFFFFF;
-            continue;
-        }
+        if (req_len <= 0) { ESP_LOGW(TAG, "Falha ao montar pacote SNMP para %s", oids[i]); out_values[i] = 0xFFFFFFFF; continue; }
 
         sendto(sock, req, req_len, 0, (struct sockaddr *)dest, sizeof(*dest));
 
@@ -224,7 +219,7 @@ esp_err_t f_QueryTrafficMulti(int sock, struct sockaddr_in *dest, const char **o
         if (r > 0 && parse_snmp_counter32_value(resp, r, &counter)) {
             out_values[i] = counter;
         } else {
-            ESP_LOGW(TAG, "Falha ao receber resposta SNMP para tráfego OID %s (IP: %s)", oids[i], inet_ntoa(dest->sin_addr));
+            //ESP_LOGW(TAG, "Falha ao receber resposta SNMP para tráfego OID %s (IP: %s)", oids[i], inet_ntoa(dest->sin_addr));
             out_values[i] = 0xFFFFFFFF;  // Marca como erro
         }
     }
@@ -232,3 +227,107 @@ esp_err_t f_QueryTrafficMulti(int sock, struct sockaddr_in *dest, const char **o
     return ESP_OK;
 }
 
+// int16_t f_PPPoECount(int sock, struct sockaddr_in *dest) {
+//         int16_t total_pppoe = 0;
+//         uint8_t req[64], resp[256];
+//         socklen_t from_len = sizeof(*dest);
+
+//         uint8_t current_oid[32];
+//         size_t current_oid_len = 0;
+
+//         parse_oid_string("1.3.6.1.2.1.2.2.1.2", current_oid, &current_oid_len);
+
+//         uint8_t req_id = 0x20;
+//         int max_seguro = 8192;  // ← segurança contra loop infinito
+//         int iteracoes = 0;
+//         while (true) {
+//             if (iteracoes++ > max_seguro) { ESP_LOGW("SNMP_PPP", "Loop SNMP interrompido após %d iterações (proteção de segurança)", max_seguro); total_pppoe = -1; break; }
+//             int req_len = build_snmp_getnext(req, sizeof(req), current_oid, current_oid_len, req_id++);
+//             if (req_len <= 0) { ESP_LOGW("SNMP_PPP", "Falha ao montar GETNEXT"); total_pppoe = -1; break; }
+//             bool resposta_ok = false;
+//             int r = 0;
+//             for (int tentativa = 0; tentativa < 4 && !resposta_ok; tentativa++) {
+//                     sendto(sock, req, req_len, 0, (struct sockaddr *)dest, sizeof(*dest));
+//                     r = recvfrom(sock, resp, sizeof(resp) - 1, 0, (struct sockaddr *)dest, &from_len);
+//                     if (r > 0) {
+//                         resposta_ok = true;
+//                         break;
+//                     } else {
+//                         vTaskDelay(pdMS_TO_TICKS(10));
+//                     }
+//             }
+//             if (!resposta_ok) { total_pppoe = -1; break; }
+//             char *oid_str = print_oid_readable_from_packet(resp, r);
+//             if (!oid_str) { ESP_LOGW("SNMP_PPP", "OID retornado é NULL, encerrando."); ESP_LOG_BUFFER_HEXDUMP("SNMP_RAW", resp, r, ESP_LOG_WARN); break; }
+//             if (strncmp(oid_str, "1.3.6.1.2.1.2.2.1.2", 19) != 0) break;
+//             char iface_name[128] = {0};
+//             if (parse_snmp_string_value(resp, r, iface_name, sizeof(iface_name))) {
+//                 if (strcasestr(iface_name, TERMO_PPPOE)) {
+//                     total_pppoe++;
+//                 }
+//             } else {
+//                 ESP_LOGW("SNMP_PPP", "Falha ao extrair ifDescr");
+//                 ESP_LOG_BUFFER_HEXDUMP("SNMP_RAW", resp, r, ESP_LOG_WARN);
+//             }
+
+//             size_t next_oid_len = 0;
+//             if (!parse_oid_from_packet(resp, r, current_oid, &next_oid_len)) {
+//                 ESP_LOGW("SNMP_PPP", "Falha ao extrair próximo OID");
+//                 break;
+//             }
+//             current_oid_len = next_oid_len;
+//         }
+
+//         return total_pppoe;
+// }
+
+// esp_err_t f_GetDeviceUptime(const char *ip_address, long port, uint32_t *out_ticks) {
+//         if (!ip_address || !out_ticks) return ESP_ERR_INVALID_ARG;
+
+//         int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+//         if (sock < 0) {
+//             ESP_LOGE(TAG, "Erro ao criar socket");
+//             return ESP_FAIL;
+//         }
+
+//         struct sockaddr_in dest = {
+//             .sin_family = AF_INET,
+//             .sin_port = htons(port),
+//             .sin_addr.s_addr = inet_addr(ip_address)
+//         };
+
+//         const char *OID_UPTIME = "1.3.6.1.2.1.1.3.0";
+//         uint8_t oid[32];
+//         size_t oid_len = 0;
+
+//         if (!parse_oid_string(OID_UPTIME, oid, &oid_len)) {
+//             ESP_LOGE(TAG, "OID de uptime inválido");
+//             close(sock);
+//             return ESP_FAIL;
+//         }
+
+//         uint8_t req[64], resp[256];
+//         int req_len = build_snmp_get(req, sizeof(req), oid, oid_len, 0x11);
+//         sendto(sock, req, req_len, 0, (struct sockaddr *)&dest, sizeof(dest));
+
+//         socklen_t from_len = sizeof(dest);
+//         int r = recvfrom(sock, resp, sizeof(resp) - 1, 0, (struct sockaddr *)&dest, &from_len);
+//         if (r <= 0) {
+//             ESP_LOGE(TAG, "Sem resposta SNMP para uptime");
+//             close(sock);
+//             return ESP_FAIL;
+//         }
+
+//         uint32_t ticks = 0;
+//         if (!parse_snmp_timeticks_value(resp, r, &ticks)) {
+//             ESP_LOGE(TAG, "Falha ao extrair uptime (TimeTicks)");
+//             ESP_LOG_BUFFER_HEXDUMP("SNMP_UPTIME", resp, r, ESP_LOG_INFO);
+//             close(sock);
+//             return ESP_FAIL;
+//         }
+
+//         close(sock);
+//         *out_ticks = ticks;
+       
+//         return ESP_OK;
+// }

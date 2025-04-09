@@ -19,10 +19,15 @@ typedef enum {
     MIB_IF_IN_OCTETS,    // .1.3.6.1.2.1.2.2.1.10
     MIB_IF_OUT_OCTETS,   // .1.3.6.1.2.1.2.2.1.16
     MIB_IF_SPEED,        // .1.3.6.1.2.1.2.2.1.5
-    MIB_IF_DESCR         // .1.3.6.1.2.1.2.2.1.2
+    MIB_IF_DESCR,        // .1.3.6.1.2.1.2.2.1.2
+    MIB_IF_PPPoE_List     
 } MIBMetric;
 
 const char *f_GetBaseOID(MIBMetric metric);
 
+int build_snmp_getnext(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t oid_len, uint8_t request_id) ;
 
-
+bool parse_oid_from_packet(const uint8_t *packet, int len, uint8_t *out_oid, size_t *out_len);
+char *print_oid_readable_from_packet(const uint8_t *packet, int len); 
+void f_FormatUptime(uint32_t ticks, char *out_str, size_t out_len);
+bool parse_snmp_timeticks_value(const uint8_t *packet, int length, uint32_t *out_value); 

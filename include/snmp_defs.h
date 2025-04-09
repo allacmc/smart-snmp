@@ -5,7 +5,9 @@
 
 typedef enum {
     TIPO_INTERFACE,
-    TIPO_TRAFEGO
+    TIPO_TRAFEGO,
+    TIPO_UPTIME,
+    TIPO_PPPoE    
 } TipoSelecionado;
 
 typedef struct {
@@ -21,3 +23,9 @@ typedef struct {
     OIDInfo oids[MAX_OIDS];
 } IPInfo;
 
+typedef struct {
+    int index;
+    char name[128];
+    char status[16];
+    int type;
+} InterfaceInfo;
