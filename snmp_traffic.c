@@ -7,7 +7,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
-static const char *TAG = "SNMP_TRAFIC";
+//static const char *TAG = "SNMP_TRAFIC";
 
 static TrafficHistory history[MAX_TRAFFIC_HISTORY];
 static int history_count = 0;
@@ -102,7 +102,7 @@ void f_ProcessaTrafegoSNMP(int sock, IPInfo *device, struct sockaddr_in *dest) {
     if (trafego_count == 0) return;
 
     uint32_t trafego_result[MAX_OIDS] = {0};
-    f_QueryTrafficMulti(sock, dest, oids_trafego, trafego_count, trafego_result);
+    f_QueryTrafficMulti(sock, dest, oids_trafego, trafego_count, trafego_result, device->community);
 
     for (int k = 0; k < trafego_count; k += 2) {
         int j_in  = index_map[k + MAX_OIDS / 2];

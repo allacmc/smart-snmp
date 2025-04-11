@@ -55,7 +55,7 @@ void f_LiberaPPPoETargets(void) {
     total_pppoe_targets = 0;
 }
 
-int16_t f_PPPoECount(int sock, struct sockaddr_in *dest) {
+int16_t f_PPPoECount(int sock, struct sockaddr_in *dest, const char *communit) {
     int16_t total_pppoe = 0;
     uint8_t req[64], resp[256];
     socklen_t from_len = sizeof(*dest);
@@ -70,7 +70,7 @@ int16_t f_PPPoECount(int sock, struct sockaddr_in *dest) {
     int iteracoes = 0;
     while (true) {
         if (iteracoes++ > max_seguro) { ESP_LOGW("SNMP_PPP", "Loop SNMP interrompido após %d iterações (proteção de segurança)", max_seguro); total_pppoe = -1; break; }
-        int req_len = build_snmp_getnext(req, sizeof(req), current_oid, current_oid_len, req_id++);
+        int req_len = build_snmp_getnext(req, sizeof(req), current_oid, current_oid_len, req_id++, communit);
         if (req_len <= 0) { ESP_LOGW("SNMP_PPP", "Falha ao montar GETNEXT"); total_pppoe = -1; break; }
         bool resposta_ok = false;
         int r = 0;
@@ -109,11 +109,12 @@ int16_t f_PPPoECount(int sock, struct sockaddr_in *dest) {
     return total_pppoe;
 }
 
-void f_ProcessaPPPoECount(int sock, const char *ip, int port, struct sockaddr_in *dest) {
+void f_ProcessaPPPoECount(int sock, const char *ip, int port, struct sockaddr_in *dest, const char *communit) {
+
     int display = f_GetPPPoEDisplay(ip, port) - 1;
     if (display < 0) return;
 
-    int16_t pppoe_total = f_PPPoECount(sock, dest);
+    int16_t pppoe_total = f_PPPoECount(sock, dest, communit);
     if (Device[display].xQueue != NULL && f_DeviceServico(Device[display].Servico, SNMP_PPPoE_Count)) {
         xQueueOverwrite(Device[display].xQueue, &pppoe_total);
         xQueueOverwrite(Device[display].xQueueAlarme, &pppoe_total);

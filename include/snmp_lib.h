@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-int build_snmp_get(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t oid_len, uint8_t request_id);
+int build_snmp_get(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t oid_len, uint8_t request_id, const char *community);
 bool parse_snmp_integer_value(const uint8_t *buffer, int len, int *out_value);
 const char *f_GetOperStatusString(int oper_status);
 bool parse_oid_string(const char *oid_str, uint8_t *oid_out, size_t *oid_len_out);
@@ -25,7 +25,7 @@ typedef enum {
 
 const char *f_GetBaseOID(MIBMetric metric);
 
-int build_snmp_getnext(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t oid_len, uint8_t request_id) ;
+int build_snmp_getnext(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t oid_len, uint8_t request_id, const char *community);
 
 bool parse_oid_from_packet(const uint8_t *packet, int len, uint8_t *out_oid, size_t *out_len);
 char *print_oid_readable_from_packet(const uint8_t *packet, int len); 

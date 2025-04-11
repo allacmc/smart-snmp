@@ -46,7 +46,7 @@ void f_LiberaUptimeTargets(void) {
     total_uptime_targets = 0;
 }
 
-esp_err_t f_GetDeviceUptime(int sock, const char *ip_address, long port, uint32_t *out_ticks) {
+esp_err_t f_GetDeviceUptime(int sock, const char *ip_address, long port, uint32_t *out_ticks, const char *community) {
         if (!ip_address || !out_ticks || sock < 0) return ESP_ERR_INVALID_ARG;
 
         struct sockaddr_in dest = {
@@ -65,7 +65,7 @@ esp_err_t f_GetDeviceUptime(int sock, const char *ip_address, long port, uint32_
         }
 
         uint8_t req[64], resp[256];
-        int req_len = build_snmp_get(req, sizeof(req), oid, oid_len, 0x11);
+        int req_len = build_snmp_get(req, sizeof(req), oid, oid_len, 0x11, community);
         sendto(sock, req, req_len, 0, (struct sockaddr *)&dest, sizeof(dest));
 
         socklen_t from_len = sizeof(dest);
@@ -86,12 +86,12 @@ esp_err_t f_GetDeviceUptime(int sock, const char *ip_address, long port, uint32_
         return ESP_OK;
 }
 
-void f_ProcessaUptimeSNMP(int sock, const char *ip, int port, struct sockaddr_in *dest) {
+void f_ProcessaUptimeSNMP(int sock, const char *ip, int port, struct sockaddr_in *dest, const char *community) {
     int display = f_GetUptimeDisplay(ip, port) - 1;
     if (display < 0) return;
 
     uint32_t ticks = 0;
-    if (f_GetDeviceUptime(sock, ip, port, &ticks) != ESP_OK) {
+    if (f_GetDeviceUptime(sock, ip, port, &ticks, community) != ESP_OK) {
         if(PrintDebug){ESP_LOGE(TAG, "Falha ao consultar uptime de %s:%d", ip, port);}
         uint32_t erro_uptime = 0xFFFFFFFF;
         if (Device[display].xQueue != NULL && f_DeviceServico(Device[display].Servico, SNMP_Uptime)) {

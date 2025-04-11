@@ -10,8 +10,10 @@ extern "C" {
 void f_RegisterUptimeTarget(const char *ip, int port, int display);
 int  f_GetUptimeDisplay(const char *ip, int port);
 void f_LiberaUptimeTargets(void);
-void f_ProcessaUptimeSNMP(int sock, const char *ip, int port, struct sockaddr_in *dest);
-esp_err_t f_GetDeviceUptime(int sock, const char *ip_address, long port, uint32_t *out_ticks);
+//void f_ProcessaUptimeSNMP(int sock, const char *ip, int port, struct sockaddr_in *dest);
+void f_ProcessaUptimeSNMP(int sock, const char *ip, int port, struct sockaddr_in *dest, const char *community);
+//esp_err_t f_GetDeviceUptime(int sock, const char *ip_address, long port, uint32_t *out_ticks);
+esp_err_t f_GetDeviceUptime(int sock, const char *ip_address, long port, uint32_t *out_ticks, const char *community);
 
 
 #ifdef __cplusplus

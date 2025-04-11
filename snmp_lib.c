@@ -6,7 +6,7 @@
 
 static const char *TAG = "SNMP_PARSER";
 
-int build_snmp_get(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t oid_len, uint8_t request_id) {
+int build_snmp_get(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t oid_len, uint8_t request_id, const char *community) {
             if (max_len < 64 || oid_len > 32) return -1; // Limite simples
 
             int pos = 0;
@@ -16,8 +16,15 @@ int build_snmp_get(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t o
 
             buffer[pos++] = 0x02; buffer[pos++] = 0x01; buffer[pos++] = 0x01; // SNMP v2c
 
-            buffer[pos++] = 0x04; buffer[pos++] = 0x06;
-            memcpy(&buffer[pos], "public", 6); pos += 6;
+            // buffer[pos++] = 0x04; buffer[pos++] = 0x06;
+            // memcpy(&buffer[pos], "public", 6); pos += 6;
+
+                size_t comm_len = strlen(community);
+                buffer[pos++] = 0x04;
+                buffer[pos++] = comm_len;
+                memcpy(&buffer[pos], community, comm_len);
+                pos += comm_len;
+
 
             buffer[pos++] = 0xA0; buffer[pos++] = 0x00; // GetRequest
             int pdu_start = pos;
@@ -261,7 +268,7 @@ void f_FormatTraffic(char *out, size_t len, float kbps) {
     }
 }
 
-int build_snmp_getnext(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t oid_len, uint8_t request_id) {
+int build_snmp_getnext(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t oid_len, uint8_t request_id, const char *community) {
     if (max_len < 64 || oid_len > 32) return -1;
 
     int pos = 0;
@@ -271,8 +278,15 @@ int build_snmp_getnext(uint8_t *buffer, size_t max_len, const uint8_t *oid, size
 
     buffer[pos++] = 0x02; buffer[pos++] = 0x01; buffer[pos++] = 0x01; // SNMP v2c
 
-    buffer[pos++] = 0x04; buffer[pos++] = 0x06;
-    memcpy(&buffer[pos], "public", 6); pos += 6;
+    // buffer[pos++] = 0x04; buffer[pos++] = 0x06;
+    // memcpy(&buffer[pos], "public", 6); pos += 6;
+
+        size_t comm_len = strlen(community);
+        buffer[pos++] = 0x04;
+        buffer[pos++] = comm_len;
+        memcpy(&buffer[pos], community, comm_len);
+        pos += comm_len;
+
 
     buffer[pos++] = 0xA1; buffer[pos++] = 0x00; // ← GETNEXT (A1)
     int pdu_start = pos;

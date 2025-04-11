@@ -11,7 +11,7 @@
 
 #define TAG "SNMP_CLIENT"
 bool StopReadInterface = false;
-static bool PrintDebug = false;
+//static bool PrintDebug = false;
 
 int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
         StopReadInterface = false;
@@ -35,6 +35,10 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
                 snprintf(tipo_key, sizeof(tipo_key), "tipoSelecionado[%s]", idx_str);
 
                 char port_key[24];
+                char comm_key[24];
+                snprintf(comm_key, sizeof(comm_key), "community[%s]", idx_str);
+                cJSON *comm_node = cJSON_GetObjectItem(json, comm_key);
+
                 snprintf(port_key, sizeof(port_key), "Port[%s]", idx_str);
                 cJSON *port_node = cJSON_GetObjectItem(json, port_key);
 
@@ -43,10 +47,15 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
                 cJSON *disp_node = cJSON_GetObjectItem(json, disp_key);
                 cJSON *tipo_node = cJSON_GetObjectItem(json, tipo_key);
 
-                if (!ip_node || !idx_node || !disp_node || !tipo_node || !port_node) continue;
+                // if (!ip_node || !idx_node || !disp_node || !tipo_node || !port_node) continue;
+                // if (!cJSON_IsString(ip_node) || !cJSON_IsString(idx_node) ||
+                //     !cJSON_IsString(disp_node) || !cJSON_IsString(tipo_node) ||
+                //     !cJSON_IsString(port_node)) continue;
+
+                if (!ip_node || !idx_node || !disp_node || !tipo_node || !port_node || !comm_node) continue;
                 if (!cJSON_IsString(ip_node) || !cJSON_IsString(idx_node) ||
                     !cJSON_IsString(disp_node) || !cJSON_IsString(tipo_node) ||
-                    !cJSON_IsString(port_node)) continue;
+                    !cJSON_IsString(port_node) || !cJSON_IsString(comm_node)) continue;
 
                 const char *ip = ip_node->valuestring;
                 int index = atoi(idx_node->valuestring);
@@ -76,6 +85,7 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
                 if (ip_idx == -1 && total_ips < max_dispositivos) {
                     dispositivos[total_ips].ip = strdup(ip);
                     dispositivos[total_ips].port = atoi(port_node->valuestring); // 👈 salva a porta
+                    dispositivos[total_ips].community = strdup(comm_node->valuestring);  // 👈 aqui
                     ip_idx = total_ips++;
                 }
 
@@ -101,8 +111,8 @@ void f_ExecutaLeituraSNMP(IPInfo *dispositivos, int total_ips) {
                 struct sockaddr_in dest = {.sin_family = AF_INET, .sin_port = htons(dispositivos[i].port), .sin_addr.s_addr = inet_addr(dispositivos[i].ip)};
                 f_ProcessaStatusInterface(sock, &dispositivos[i], &dest);
                 f_ProcessaTrafegoSNMP(sock, &dispositivos[i], &dest);
-                f_ProcessaPPPoECount(sock, dispositivos[i].ip, dispositivos[i].port, &dest);
-                f_ProcessaUptimeSNMP(sock, dispositivos[i].ip, dispositivos[i].port, &dest);
+                f_ProcessaPPPoECount(sock, dispositivos[i].ip, dispositivos[i].port, &dest, dispositivos[i].community);
+                f_ProcessaUptimeSNMP(sock, dispositivos[i].ip, dispositivos[i].port, &dest, dispositivos[i].community);
                 close(sock);
             }
             vTaskDelay(pdMS_TO_TICKS(5000));

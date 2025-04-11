@@ -87,7 +87,9 @@ void f_ScanInterface(void *args) {
         int maxInterface_val = f_KeyValueInt("MaxInterface", "/snmp-scan.json");
         if (maxInterface_val < 1 || maxInterface_val > 128) { ESP_LOGE(TAG, "Timeout inválido: %d. O valor deve estar entre 2 e 20.", maxInterface_val); StatusScan = false;vTaskDelete(NULL); return; }
         ESP_LOGI(TAG, "Iniciando task de Scan SNMP para %s na porta %ld, timeout %d, max-interface %d", ip_address, port, timeout_val, maxInterface_val);
-        esp_err_t result = f_ListInterfaces(ip_address, port, timeout_val, maxInterface_val);
+        const char * community = f_KeyValue("Community", "/snmp-scan.json");
+        if (!community || strlen(community) == 0) { ESP_LOGE(TAG, "Campo Community inválido ou não encontrado."); StatusScan = false; vTaskDelete(NULL); return; }
+        esp_err_t result = f_ListInterfaces(ip_address, port, timeout_val, maxInterface_val, community);
         int discovered_interfaces = f_iDiscoveryCount();
         ESP_LOGI(TAG, "Listagem de interfaces %s. Interfaces descobertas: %d",(result == ESP_OK) ? "concluída" : esp_err_to_name(result), discovered_interfaces);
         StatusScan = false;
@@ -151,6 +153,7 @@ void f_ReadInterfaces(void *args) {
         int total_ips = f_PopulaDispositivos(dispositivos, MAX_IPS);
         if (total_ips <= 0) {
             ESP_LOGE(TAG, "Nenhum dispositivo válido encontrado");
+            hReadInterface = NULL;
             vTaskDelete(NULL);
             return;
         }

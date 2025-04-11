@@ -39,7 +39,7 @@ void f_ProcessaStatusInterface(int sock, IPInfo *device, struct sockaddr_in *des
     if (status_count == 0) return;
 
     char *status_result[MAX_OIDS] = {0};
-    f_QueryIfStatusMulti(sock, dest, oids_status, status_count, status_result);
+    f_QueryIfStatusMulti(sock, dest, oids_status, status_count, status_result, device->community);
 
     for (int k = 0; k < status_count; k++) {
         int j = index_map[k];
