@@ -21,6 +21,10 @@ static int total_uptime_targets = 0;
 
 static bool PrintDebug = false;
 
+int f_GetTotalUptimeTargets(void) {
+    return total_uptime_targets;
+}
+
 void f_RegisterUptimeTarget(const char *ip, int port, int display) {
     if (total_uptime_targets >= MAX_UPTIME_TARGETS) return;
 
@@ -46,7 +50,10 @@ void f_LiberaUptimeTargets(void) {
     total_uptime_targets = 0;
 }
 
+
+
 esp_err_t f_GetDeviceUptime(int sock, const char *ip_address, long port, uint32_t *out_ticks, const char *community) {
+        if (f_GetTotalUptimeTargets() == 0) return ESP_FAIL; // não tem nada pra processar
         if (!ip_address || !out_ticks || sock < 0) return ESP_ERR_INVALID_ARG;
 
         struct sockaddr_in dest = {
@@ -78,7 +85,7 @@ esp_err_t f_GetDeviceUptime(int sock, const char *ip_address, long port, uint32_
         uint32_t ticks = 0;
         if (!parse_snmp_timeticks_value(resp, r, &ticks)) {
             ESP_LOGE(TAG, "Falha ao extrair uptime (TimeTicks)");
-            ESP_LOG_BUFFER_HEXDUMP("SNMP_UPTIME", resp, r, ESP_LOG_INFO);
+            //ESP_LOG_BUFFER_HEXDUMP("SNMP_UPTIME", resp, r, ESP_LOG_INFO);
             return ESP_FAIL;
         }
 

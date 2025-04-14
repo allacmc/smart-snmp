@@ -7,6 +7,7 @@
 #include "snmp_traffic.h"
 #include "snmp_uptime.h"
 #include "snmp_pppoe.h"
+#include "snmp_custom.h"
 #include "snmp_status-interface.h"
 
 #define TAG "SNMP_CLIENT"
@@ -47,11 +48,6 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
                 cJSON *disp_node = cJSON_GetObjectItem(json, disp_key);
                 cJSON *tipo_node = cJSON_GetObjectItem(json, tipo_key);
 
-                // if (!ip_node || !idx_node || !disp_node || !tipo_node || !port_node) continue;
-                // if (!cJSON_IsString(ip_node) || !cJSON_IsString(idx_node) ||
-                //     !cJSON_IsString(disp_node) || !cJSON_IsString(tipo_node) ||
-                //     !cJSON_IsString(port_node)) continue;
-
                 if (!ip_node || !idx_node || !disp_node || !tipo_node || !port_node || !comm_node) continue;
                 if (!cJSON_IsString(ip_node) || !cJSON_IsString(idx_node) ||
                     !cJSON_IsString(disp_node) || !cJSON_IsString(tipo_node) ||
@@ -64,6 +60,7 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
                 TipoSelecionado tipo;
                 bool is_pppoe_count = false;
                 bool is_uptime = false;
+                bool is_custom = false;
 
                 if (strcasecmp(tipo_node->valuestring, "Trafego") == 0) {
                     tipo = TIPO_TRAFEGO;
@@ -73,7 +70,10 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
                 } else if (strcasecmp(tipo_node->valuestring, "Uptime") == 0) {
                     tipo = TIPO_UPTIME;
                     is_uptime = true;
-                } else {
+                } else if (strcasecmp(tipo_node->valuestring, "Custom") == 0) {
+                    tipo = TIPO_INTERFACE;
+                    is_custom = true;
+                }  else {
                     tipo = TIPO_INTERFACE;
                 }
 
@@ -89,10 +89,21 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
                     ip_idx = total_ips++;
                 }
 
+                if (is_custom) {
+                    //Preciso encontrar uma forma de colocar o operation e operation factor
+                    char custom_key[64];
+                    snprintf(custom_key, sizeof(custom_key), "customOid[%s]", idx_str);
+                    cJSON *oid_node = cJSON_GetObjectItem(json, custom_key);
+                    if (oid_node && cJSON_IsString(oid_node)) {
+                        f_RegisterCustomTarget(ip, atoi(port_node->valuestring), atoi(disp_node->valuestring), oid_node->valuestring);
+                    }
+                    continue; // pula o resto, só registra
+                }
+                
                 if (ip_idx != -1 && dispositivos[ip_idx].total_oids < MAX_OIDS - 2) {
                     if (tipo == TIPO_INTERFACE) {
                         f_RegistraOIDStatusInterface(&dispositivos[ip_idx], display, index);
-                    } else {
+                    } else if (tipo == TIPO_TRAFEGO) {
                         f_RegistraOIDTrafego(&dispositivos[ip_idx], display, index);
                     }
                 }
@@ -100,7 +111,6 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
         cJSON_Delete(json);
         return total_ips;
 }
-
 
 void f_ExecutaLeituraSNMP(IPInfo *dispositivos, int total_ips) {
     while (!StopReadInterface) {
@@ -113,6 +123,9 @@ void f_ExecutaLeituraSNMP(IPInfo *dispositivos, int total_ips) {
                 f_ProcessaTrafegoSNMP(sock, &dispositivos[i], &dest);
                 f_ProcessaPPPoECount(sock, dispositivos[i].ip, dispositivos[i].port, &dest, dispositivos[i].community);
                 f_ProcessaUptimeSNMP(sock, dispositivos[i].ip, dispositivos[i].port, &dest, dispositivos[i].community);
+
+                f_ProcessaSNMPCustom(sock, dispositivos[i].ip, dispositivos[i].port, dispositivos[i].community);
+
                 close(sock);
             }
             vTaskDelay(pdMS_TO_TICKS(5000));

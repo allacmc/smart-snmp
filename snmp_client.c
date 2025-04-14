@@ -102,6 +102,18 @@ esp_err_t f_ListInterfaces(const char *ip_address, long port, int timeout_val, i
                     cJSON_AddItemToArray(root, item);
                     InterfaceDiscovery++;
           }
+          if (InterfaceDiscovery == 0) {
+                ESP_LOGW(TAG, "Nenhuma interface encontrada, salvando info básica mesmo assim...");
+                cJSON *item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "IP", ip_address);
+                cJSON_AddNumberToObject(item, "Port", port);
+                cJSON_AddStringToObject(item, "Community", community);
+                cJSON_AddStringToObject(item, "status", "SEM_RESPOSTA");
+                cJSON_AddStringToObject(item, "name", "SNMP_EMPTY");
+                cJSON_AddNumberToObject(item, "index", 0);
+                cJSON_AddNumberToObject(item, "type", 0);
+                cJSON_AddItemToArray(root, item);
+          }
           saveJsonToFile("/ScanInterfaces.json", root);
           cJSON_Delete(root);
           close(sock);

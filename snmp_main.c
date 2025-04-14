@@ -100,7 +100,6 @@ void f_startSelectInterfaces() {
     xTaskCreate(f_SelectInterfaces, "f_SelectInterfaces", 4096, NULL, 5, NULL);
 }
 
-
 static void f_SelectInterfaces(void *args) {
             ESP_LOGI(TAG, "Iniciando tarefa de seleção de interfaces SNMP");
             vTaskDelay(pdMS_TO_TICKS(500));
@@ -114,26 +113,142 @@ static void f_SelectInterfaces(void *args) {
                         ESP_LOGE(TAG, "Erro ao salvar o arquivo snmp-interface-select.json");
                     }
             } else if (strcmp(snmp_action->valuestring, "adicionar") == 0) {
-                    cJSON *json_existente = read_json_file("/snmp-interface-select.json");
-                    if (!json_existente) { ESP_LOGW(TAG, "Arquivo existente não encontrado. Criando novo."); json_existente = cJSON_CreateObject(); }
-                    cJSON *item = NULL;
-                    cJSON_ArrayForEach(item, json_novo) {
-                        const char *key = item->string;
-                        if (!cJSON_HasObjectItem(json_existente, key)) {
-                            cJSON_AddItemToObject(json_existente, key, cJSON_Duplicate(item, true));
-                        } 
-                    }
-                    cJSON_DeleteItemFromObject(json_existente, "snmpAction");
-                    cJSON_DeleteItemFromObject(json_existente, "xx");
-                    if (saveJsonToFile("/snmp-interface-select.json", json_existente) == 0) {
-                        ESP_LOGI(TAG, "Arquivo snmp-interface-select.json atualizado com sucesso");
-                    } else {
-                        ESP_LOGE(TAG, "Erro ao atualizar o arquivo snmp-interface-select.json");
-                    }
-                    cJSON_Delete(json_existente);
-            } 
+                cJSON *json_existente = read_json_file("/snmp-interface-select.json");
+                if (!json_existente) {
+                    ESP_LOGW(TAG, "Arquivo existente não encontrado. Criando novo.");
+                    json_existente = cJSON_CreateObject();
+                }
+            
+                mergeJsonWithReindex(json_existente, json_novo);  // 👈 aqui tá o pulo do gato
+            
+                cJSON_DeleteItemFromObject(json_existente, "snmpAction");
+                cJSON_DeleteItemFromObject(json_existente, "xx");
+            
+                if (saveJsonToFile("/snmp-interface-select.json", json_existente) == 0) {
+                    ESP_LOGI(TAG, "Arquivo snmp-interface-select.json atualizado com sucesso");
+                } else {
+                    ESP_LOGE(TAG, "Erro ao atualizar o arquivo snmp-interface-select.json");
+                }
+                cJSON_Delete(json_existente);
+            }        
             cJSON_Delete(json_novo);
             vTaskDelete(NULL);
+}
+
+
+void f_startAddCustomOID() {
+    xTaskCreate(f_AdicionarCustomOID, "f_SelectInterfaces", 4096, NULL, 5, NULL);
+}
+
+void f_AdicionarCustomOID() {
+        ESP_LOGI("CUSTOM_OID", "Iniciando adição de SNMP Custom OID");
+
+        char *json_str = f_lerArquivo("/snmp-custom-oid.json");
+        if (!json_str) {
+            ESP_LOGE("CUSTOM_OID", "Erro ao ler snmp-custom-oid.json");
+            return;
+        }
+
+        cJSON *json_custom = cJSON_Parse(json_str);
+        safe_free(&json_str);
+        if (!json_custom) {
+            ESP_LOGE("CUSTOM_OID", "Erro ao fazer parse do JSON custom");
+            return;
+        }
+
+        // Verifica se os campos obrigatórios estão presentes
+        cJSON *ip_item = cJSON_GetObjectItem(json_custom, "IP");
+        cJSON *port_item = cJSON_GetObjectItem(json_custom, "Port");
+        cJSON *community_item = cJSON_GetObjectItem(json_custom, "Community");
+
+        if (!cJSON_IsString(ip_item) || !cJSON_IsString(port_item) || !cJSON_IsString(community_item)) {
+            ESP_LOGE("CUSTOM_OID", "Campos IP, Port ou Community ausentes ou inválidos no JSON");
+            cJSON_Delete(json_custom);
+            return;
+        }
+
+        const char *ip = ip_item->valuestring;
+        const char *porta = port_item->valuestring;
+        const char *community = community_item->valuestring;
+
+        cJSON *json_destino = read_json_file("/snmp-interface-select.json");
+        if (!json_destino) {
+            ESP_LOGW("CUSTOM_OID", "Arquivo snmp-interface-select.json não existe. Criando novo.");
+            json_destino = cJSON_CreateObject();
+        }
+
+        int maior_indice = -1;
+        cJSON *item = NULL;
+        cJSON_ArrayForEach(item, json_destino) {
+            const char *key = item->string;
+            const char *abre = strchr(key, '[');
+            const char *fecha = strchr(key, ']');
+            if (abre && fecha && fecha > abre) {
+                char idx_str[16] = {0};
+                strncpy(idx_str, abre + 1, fecha - abre - 1);
+                int idx = atoi(idx_str);
+                if (idx > maior_indice) maior_indice = idx;
+            }
+        }
+
+        int novo_indice = maior_indice + 1;
+        char idx_str[16];
+        snprintf(idx_str, sizeof(idx_str), "%d", novo_indice);
+        char key[64];
+
+        snprintf(key, sizeof(key), "selectedRow[%s]", idx_str);
+        cJSON_AddStringToObject(json_destino, key, "on");
+
+        snprintf(key, sizeof(key), "IP[%s]", idx_str);
+        cJSON_AddStringToObject(json_destino, key, ip);
+
+        snprintf(key, sizeof(key), "Port[%s]", idx_str);
+        cJSON_AddStringToObject(json_destino, key, porta);
+
+        snprintf(key, sizeof(key), "Community[%s]", idx_str);
+        cJSON_AddStringToObject(json_destino, key, community);
+
+        snprintf(key, sizeof(key), "index[%s]", idx_str);
+        cJSON_AddStringToObject(json_destino, key, "999");
+
+        snprintf(key, sizeof(key), "name[%s]", idx_str);
+        cJSON_AddStringToObject(json_destino, key, "Custom OID");
+
+        snprintf(key, sizeof(key), "status[%s]", idx_str);
+        cJSON_AddStringToObject(json_destino, key, "UP");
+
+        snprintf(key, sizeof(key), "type[%s]", idx_str);
+        cJSON_AddStringToObject(json_destino, key, "999");
+
+        snprintf(key, sizeof(key), "tipoSelecionado[%s]", idx_str);
+        cJSON_AddStringToObject(json_destino, key, "Custom");
+
+        snprintf(key, sizeof(key), "displaySelecionado[%s]", idx_str);
+        cJSON_AddStringToObject(json_destino, key, cJSON_GetObjectItem(json_custom, "snmp-custom-display")->valuestring);
+
+        snprintf(key, sizeof(key), "customOid[%s]", idx_str);
+        cJSON_AddItemToObject(json_destino, key, cJSON_Duplicate(cJSON_GetObjectItem(json_custom, "customOid"), 1));
+
+        snprintf(key, sizeof(key), "operationType[%s]", idx_str);
+        cJSON_AddItemToObject(json_destino, key, cJSON_Duplicate(cJSON_GetObjectItem(json_custom, "operationType"), 1));
+
+        snprintf(key, sizeof(key), "operationFactor[%s]", idx_str);
+        cJSON_AddItemToObject(json_destino, key, cJSON_Duplicate(cJSON_GetObjectItem(json_custom, "operationFactor"), 1));
+
+        snprintf(key, sizeof(key), "unitSuffix[%s]", idx_str);
+        cJSON_AddItemToObject(json_destino, key, cJSON_Duplicate(cJSON_GetObjectItem(json_custom, "unitSuffix"), 1));
+
+        cJSON_DeleteItemFromObject(json_destino, "xx");
+
+        if (saveJsonToFile("/snmp-interface-select.json", json_destino) == 0) {
+            ESP_LOGI("CUSTOM_OID", "Arquivo snmp-interface-select.json atualizado com sucesso!");
+        } else {
+            ESP_LOGE("CUSTOM_OID", "Erro ao salvar snmp-interface-select.json");
+        }
+
+        cJSON_Delete(json_custom);
+        cJSON_Delete(json_destino);
+        vTaskDelete(NULL);
 }
 
 TaskHandle_t hReadInterface = NULL;
@@ -157,6 +272,7 @@ void f_ReadInterfaces(void *args) {
             vTaskDelete(NULL);
             return;
         }
+        //debug_dispositivos(dispositivos, total_ips);
         f_ExecutaLeituraSNMP(dispositivos, total_ips);
         f_LiberaDispositivos(dispositivos, total_ips);
         ESP_LOGI(TAG, "Encerrando leitura automática de interfaces SNMP");
@@ -170,4 +286,22 @@ f_StatusReadInterface_t f_StatusReadInterface() {
     } else {
         return STOPPED;
     }
+}
+
+void debug_dispositivos(IPInfo *dispositivos, int total_ips) {
+    ESP_LOGW(TAG, "Inicio");
+    for (int i = 0; i < total_ips; i++) {
+        ESP_LOGI(TAG, "Dispositivo #%d", i);
+        ESP_LOGI(TAG, "  IP: %s", dispositivos[i].ip);
+        ESP_LOGI(TAG, "  Porta: %d", dispositivos[i].port);
+        ESP_LOGI(TAG, "  Community: %s", dispositivos[i].community);
+        ESP_LOGI(TAG, "  Total OIDs: %d", dispositivos[i].total_oids);
+        for (int j = 0; j < dispositivos[i].total_oids; j++) {
+            ESP_LOGI(TAG, "    OID #%d:", j);
+            ESP_LOGI(TAG, "      OID: %s", dispositivos[i].oids[j].oid);
+            ESP_LOGI(TAG, "      Display: %s", dispositivos[i].oids[j].display);
+            ESP_LOGI(TAG, "      Tipo: %d", dispositivos[i].oids[j].tipo); // pode mapear esse enum depois se quiser
+        }
+    }
+    ESP_LOGW(TAG, "Fim");
 }

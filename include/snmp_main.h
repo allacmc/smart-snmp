@@ -14,3 +14,5 @@ char* f_scan_snmp_cb();
 char* f_scan_snmp_status_cb();
 void f_startSelectInterfaces();
 f_StatusReadInterface_t f_StatusReadInterface();
+void f_AdicionarCustomOID();
+void f_startAddCustomOID();

@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "cJSON.h"
 
 int build_snmp_get(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t oid_len, uint8_t request_id, const char *community);
 bool parse_snmp_integer_value(const uint8_t *buffer, int len, int *out_value);
@@ -31,3 +32,5 @@ bool parse_oid_from_packet(const uint8_t *packet, int len, uint8_t *out_oid, siz
 char *print_oid_readable_from_packet(const uint8_t *packet, int len); 
 void f_FormatUptime(uint32_t ticks, char *out_str, size_t out_len);
 bool parse_snmp_timeticks_value(const uint8_t *packet, int length, uint32_t *out_value); 
+void mergeJsonWithReindex(cJSON *destino, cJSON *origem);
+uint8_t parse_snmp_value_type(const uint8_t *resp, size_t len);

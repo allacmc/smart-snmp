@@ -99,6 +99,11 @@ void f_ProcessaTrafegoSNMP(int sock, IPInfo *device, struct sockaddr_in *dest) {
         }
     }
 
+    if (trafego_count % 2 != 0) {
+        ESP_LOGW("SNMP", "Quantidade ímpar de OIDs de tráfego: %d", trafego_count);
+        trafego_count--; // Ou: return;
+    }
+
     if (trafego_count == 0) return;
 
     uint32_t trafego_result[MAX_OIDS] = {0};
@@ -107,6 +112,14 @@ void f_ProcessaTrafegoSNMP(int sock, IPInfo *device, struct sockaddr_in *dest) {
     for (int k = 0; k < trafego_count; k += 2) {
         int j_in  = index_map[k + MAX_OIDS / 2];
         int j_out = index_map[k + 1 + MAX_OIDS / 2];
+
+        if (j_in < 0 || j_in >= device->total_oids ||
+                j_out < 0 || j_out >= device->total_oids ||
+                device->oids[j_in].display == NULL ||
+                device->oids[j_out].display == NULL) {
+                ESP_LOGW("SNMP", "OID inválido ou display NULL (j_in=%d, j_out=%d)", j_in, j_out);
+                continue; // pula esse par
+        }
 
         if (trafego_result[k] != 0xFFFFFFFF && trafego_result[k + 1] != 0xFFFFFFFF) {
             int display = atoi(device->oids[j_out].display) - 1;

@@ -7,7 +7,8 @@ typedef enum {
     TIPO_INTERFACE,
     TIPO_TRAFEGO,
     TIPO_UPTIME,
-    TIPO_PPPoE    
+    TIPO_PPPoE,
+    TIPO_CUSTOM    
 } TipoSelecionado;
 
 typedef struct {

@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include "esp_log.h"
 #include <stdio.h> // Adicionado para declarar printf
+#include <stdint.h>
+#include "cJSON.h"
 
 static const char *TAG = "SNMP_PARSER";
 
@@ -189,32 +191,46 @@ char *print_oid_readable(const uint8_t *oid, size_t oid_len) {
 }
 
 bool parse_oid_string(const char *oid_str, uint8_t *oid_out, size_t *oid_len_out) {
-        if (!oid_str || !oid_out || !oid_len_out) return false;
+    if (!oid_str || !oid_out || !oid_len_out) return false;
 
-        char oid_copy[128];
-        strncpy(oid_copy, oid_str, sizeof(oid_copy));
-        oid_copy[sizeof(oid_copy) - 1] = '\0';
+    char oid_copy[128];
+    strncpy(oid_copy, oid_str, sizeof(oid_copy));
+    oid_copy[sizeof(oid_copy) - 1] = '\0';
 
-        char *token = strtok(oid_copy, ".");
-        int count = 0;
+    char *token = strtok(oid_copy, ".");
+    int subids[32];
+    int subid_count = 0;
 
-        while (token && count < 32) {
-            int value = atoi(token);
-            if (count == 0) {
-                if (value != 1) return false;
-            } else if (count == 1) {
-                if (value != 3) return false;
-                oid_out[0] = 40 * 1 + 3; // 0x2b
-            } else {
-                oid_out[count - 1] = (uint8_t)value;
-            }
+    while (token && subid_count < 32) {
+        subids[subid_count++] = atoi(token);
+        token = strtok(NULL, ".");
+    }
 
-            token = strtok(NULL, ".");
-            count++;
+    if (subid_count < 2) return false;
+
+    // Primeiro byte: (first * 40) + second
+    int pos = 0;
+    oid_out[pos++] = (uint8_t)(subids[0] * 40 + subids[1]);
+
+    for (int i = 2; i < subid_count; i++) {
+        uint32_t val = subids[i];
+        uint8_t temp[5];  // Máximo 5 bytes para codificar uint32
+        int temp_pos = 0;
+
+        // Codifica em base 128 com MSB = 1 nos bytes intermediários
+        do {
+            temp[temp_pos++] = val & 0x7F;
+            val >>= 7;
+        } while (val > 0);
+
+        // Escreve os bytes em ordem reversa, com MSB setado corretamente
+        for (int j = temp_pos - 1; j >= 0; j--) {
+            oid_out[pos++] = temp[j] | (j == 0 ? 0x00 : 0x80);
         }
-
-        *oid_len_out = count - 1;
-        return true;
+    }
+    *oid_len_out = pos;
+    if (*oid_len_out < 2) return false;
+    return true;
 }
 
 bool parse_snmp_counter32_value(const uint8_t *packet, int length, uint32_t *out_value) {
@@ -392,3 +408,116 @@ bool parse_snmp_timeticks_value(const uint8_t *packet, int length, uint32_t *out
 
     return false;
 }
+
+void mergeJsonWithReindex(cJSON *destino, cJSON *origem) {
+    int maior_indice = -1;
+    cJSON *item = NULL;
+
+    // 1. Achar o maior índice atual do destino
+    cJSON_ArrayForEach(item, destino) {
+        const char *key = item->string;
+        const char *abre = strchr(key, '[');
+        const char *fecha = strchr(key, ']');
+        if (abre && fecha && fecha > abre) {
+            char idx_str[8] = {0};
+            strncpy(idx_str, abre + 1, fecha - abre - 1);
+            int idx = atoi(idx_str);
+            if (idx > maior_indice) maior_indice = idx;
+        }
+    }
+
+    // 2. Mapear os índices usados no JSON novo
+    typedef struct { char original[8]; } IndexMap;
+    IndexMap blocos[32];
+    int total_blocos = 0;
+
+    cJSON_ArrayForEach(item, origem) {
+        const char *key = item->string;
+        const char *abre = strchr(key, '[');
+        const char *fecha = strchr(key, ']');
+        if (abre && fecha && fecha > abre) {
+            char idx_str[8] = {0};
+            strncpy(idx_str, abre + 1, fecha - abre - 1);
+            bool ja_existe = false;
+            for (int i = 0; i < total_blocos; i++) {
+                if (strcmp(blocos[i].original, idx_str) == 0) {
+                    ja_existe = true;
+                    break;
+                }
+            }
+            if (!ja_existe) {
+                strncpy(blocos[total_blocos++].original, idx_str, sizeof(blocos[0].original));
+            }
+        }
+    }
+
+    // 3. Pra cada bloco, criar novo índice e copiar todas as chaves relacionadas
+    for (int i = 0; i < total_blocos; i++) {
+        const char *old_idx = blocos[i].original;
+        int new_idx = ++maior_indice;
+
+        cJSON_ArrayForEach(item, origem) {
+            const char *key = item->string;
+            char busca[16];
+            snprintf(busca, sizeof(busca), "[%s]", old_idx);
+            if (strstr(key, busca)) {
+                // gera nova chave com novo índice
+                char nova_chave[64];
+                char prefixo[32];
+                strncpy(prefixo, key, strstr(key, "[") - key);
+                prefixo[strstr(key, "[") - key] = '\0';
+                snprintf(nova_chave, sizeof(nova_chave), "%s[%d]", prefixo, new_idx);
+                cJSON_AddItemToObject(destino, nova_chave, cJSON_Duplicate(item, true));
+            }
+        }
+    }
+}
+
+uint8_t parse_snmp_value_type(const uint8_t *resp, size_t len) {
+    if (!resp || len < 2) return 0xFF;
+
+    // Tenta encontrar o último VarBind
+    for (size_t i = 0; i < len - 2; i++) {
+        if (resp[i] == 0x06) {  // OID
+            size_t oid_len = resp[i + 1];
+            size_t next_type_pos = i + 2 + oid_len;
+            if (next_type_pos < len) {
+                return resp[next_type_pos];  // Tipo do valor
+            }
+        }
+    }
+
+    return 0xFF;
+}
+
+//Essa função abaixo funcionava perfeito, no Scan Interface, Status Interface, PPPoE, Uptime, Trafego, só não funcionou no SNMP CUSTOM
+//
+
+// bool parse_oid_string(const char *oid_str, uint8_t *oid_out, size_t *oid_len_out) {
+//         if (!oid_str || !oid_out || !oid_len_out) return false;
+
+//         char oid_copy[128];
+//         strncpy(oid_copy, oid_str, sizeof(oid_copy));
+//         oid_copy[sizeof(oid_copy) - 1] = '\0';
+
+//         char *token = strtok(oid_copy, ".");
+//         int count = 0;
+
+//         while (token && count < 32) {
+//             int value = atoi(token);
+//             if (count == 0) {
+//                 if (value != 1) return false;
+//             } else if (count == 1) {
+//                 if (value != 3) return false;
+//                 oid_out[0] = 40 * 1 + 3; // 0x2b
+//             } else {
+//                 oid_out[count - 1] = (uint8_t)value;
+//             }
+
+//             token = strtok(NULL, ".");
+//             count++;
+//         }
+
+//         *oid_len_out = count - 1;
+//         return true;
+// }
