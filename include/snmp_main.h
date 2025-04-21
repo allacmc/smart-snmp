@@ -1,5 +1,6 @@
 #pragma once
-
+#include <stdio.h>
+#include <stdbool.h> // Necessário para o tipo bool
 
 typedef enum {
     RUNNING,
@@ -16,3 +17,4 @@ void f_startSelectInterfaces();
 f_StatusReadInterface_t f_StatusReadInterface();
 void f_AdicionarCustomOID();
 void f_startAddCustomOID();
+bool f_GetPrintDebugSNMP();

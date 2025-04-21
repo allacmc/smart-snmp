@@ -19,6 +19,9 @@ static const char *TAG = "SNMP_CLIENT";
 static bool StatusScan = false;
 static void f_SelectInterfaces(void *args);
 
+static bool PrintDebugSNMP = false;
+static void debug_dispositivos(IPInfo *dispositivos, int total_ips);
+
 char* clean_json_string(const char* input) {
     size_t len = strlen(input);
     char* output = (char*)malloc(len + 1);
@@ -272,7 +275,8 @@ void f_ReadInterfaces(void *args) {
             vTaskDelete(NULL);
             return;
         }
-        //debug_dispositivos(dispositivos, total_ips);
+        PrintDebugSNMP = f_KeyStatus("DebugSNMP", "/setup.json");
+        if(PrintDebugSNMP){debug_dispositivos(dispositivos, total_ips);}
         f_ExecutaLeituraSNMP(dispositivos, total_ips);
         f_LiberaDispositivos(dispositivos, total_ips);
         ESP_LOGI(TAG, "Encerrando leitura automática de interfaces SNMP");
@@ -288,7 +292,7 @@ f_StatusReadInterface_t f_StatusReadInterface() {
     }
 }
 
-void debug_dispositivos(IPInfo *dispositivos, int total_ips) {
+static void debug_dispositivos(IPInfo *dispositivos, int total_ips) {
     ESP_LOGW(TAG, "Inicio");
     for (int i = 0; i < total_ips; i++) {
         ESP_LOGI(TAG, "Dispositivo #%d", i);
@@ -305,3 +309,5 @@ void debug_dispositivos(IPInfo *dispositivos, int total_ips) {
     }
     ESP_LOGW(TAG, "Fim");
 }
+
+bool f_GetPrintDebugSNMP() {return PrintDebugSNMP;}

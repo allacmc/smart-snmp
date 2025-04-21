@@ -45,8 +45,24 @@ void f_ProcessaStatusInterface(int sock, IPInfo *device, struct sockaddr_in *des
         int j = index_map[k];
         int display = atoi(device->oids[j].display) - 1;
         if (display >= 0 && Device[display].xQueue != NULL && f_DeviceServico(Device[display].Servico, SNMP_Interface)) {
-            xQueueOverwrite(Device[display].xQueue, &status_result[k]);
-            xQueueOverwrite(Device[display].xQueueAlarme, &status_result[k]);
+            char status_str[32];
+            strncpy(status_str, status_result[k], sizeof(status_str));
+            status_str[sizeof(status_str) - 1] = '\0'; // garante que está null-terminado
+            xQueueOverwrite(Device[display].xQueue, &status_str);
+            xQueueOverwrite(Device[display].xQueueAlarme, &status_str);
         }
     }
+}
+
+bool f_SnmpStatusBad(const char *status) {
+    if (status == NULL) return true;
+
+    return (
+        strcmp(status, "DOWN") == 0 ||
+        strcmp(status, "UNKNOWN") == 0 ||
+        strcmp(status, "DORMANT") == 0 ||
+        strcmp(status, "NOT_PRESENT") == 0 ||
+        strcmp(status, "LOWER_LAYER_DOWN") == 0 ||
+        strcmp(status, "DESCON") == 0
+    );
 }

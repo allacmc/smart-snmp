@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include "cJSON.h"
 
-static const char *TAG = "SNMP_PARSER";
+//static const char *TAG = "SNMP_PARSER";
 
 int build_snmp_get(uint8_t *buffer, size_t max_len, const uint8_t *oid, size_t oid_len, uint8_t request_id, const char *community) {
             if (max_len < 64 || oid_len > 32) return -1; // Limite simples

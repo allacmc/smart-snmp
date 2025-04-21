@@ -29,11 +29,14 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
                 char idx_str[8];
                 sscanf(key, "IP[%[^]]", idx_str);
 
-                char ip_key[16], index_key[24], disp_key[40], tipo_key[40];
+                char ip_key[16], index_key[24], disp_key[40], tipo_key[40], oper_key[40], operFact_key[40], suffix_key[40];
                 snprintf(ip_key, sizeof(ip_key), "IP[%s]", idx_str);
                 snprintf(index_key, sizeof(index_key), "index[%s]", idx_str);
                 snprintf(disp_key, sizeof(disp_key), "displaySelecionado[%s]", idx_str);
                 snprintf(tipo_key, sizeof(tipo_key), "tipoSelecionado[%s]", idx_str);
+                snprintf(oper_key, sizeof(oper_key), "operationType[%s]", idx_str);
+                snprintf(operFact_key, sizeof(operFact_key), "operationFactor[%s]", idx_str);
+                snprintf(suffix_key, sizeof(suffix_key), "unitSuffix[%s]", idx_str);
 
                 char port_key[24];
                 char comm_key[24];
@@ -47,11 +50,16 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
                 cJSON *idx_node = cJSON_GetObjectItem(json, index_key);
                 cJSON *disp_node = cJSON_GetObjectItem(json, disp_key);
                 cJSON *tipo_node = cJSON_GetObjectItem(json, tipo_key);
+                cJSON *oper_node = cJSON_GetObjectItem(json, oper_key);
+                cJSON *operFact_node = cJSON_GetObjectItem(json, operFact_key);
+                cJSON *suffix_node = cJSON_GetObjectItem(json, suffix_key);
+
 
                 if (!ip_node || !idx_node || !disp_node || !tipo_node || !port_node || !comm_node) continue;
-                if (!cJSON_IsString(ip_node) || !cJSON_IsString(idx_node) ||
+                if (!cJSON_IsString(ip_node)   || !cJSON_IsString(idx_node) ||
                     !cJSON_IsString(disp_node) || !cJSON_IsString(tipo_node) ||
-                    !cJSON_IsString(port_node) || !cJSON_IsString(comm_node)) continue;
+                    !cJSON_IsString(port_node) || !cJSON_IsString(comm_node)
+                ) continue;
 
                 const char *ip = ip_node->valuestring;
                 int index = atoi(idx_node->valuestring);
@@ -94,10 +102,10 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
                     char custom_key[64];
                     snprintf(custom_key, sizeof(custom_key), "customOid[%s]", idx_str);
                     cJSON *oid_node = cJSON_GetObjectItem(json, custom_key);
-                    if (oid_node && cJSON_IsString(oid_node)) {
-                        f_RegisterCustomTarget(ip, atoi(port_node->valuestring), atoi(disp_node->valuestring), oid_node->valuestring);
+                    if (oid_node && cJSON_IsString(oid_node) && cJSON_IsString(oper_node) && cJSON_IsString(operFact_node)) {
+                            f_RegisterCustomTarget(ip, atoi(port_node->valuestring), atoi(disp_node->valuestring), oid_node->valuestring, oper_node->valuestring, operFact_node->valuestring, suffix_node->valuestring);
                     }
-                    continue; // pula o resto, só registra
+                    continue;
                 }
                 
                 if (ip_idx != -1 && dispositivos[ip_idx].total_oids < MAX_OIDS - 2) {
@@ -123,9 +131,7 @@ void f_ExecutaLeituraSNMP(IPInfo *dispositivos, int total_ips) {
                 f_ProcessaTrafegoSNMP(sock, &dispositivos[i], &dest);
                 f_ProcessaPPPoECount(sock, dispositivos[i].ip, dispositivos[i].port, &dest, dispositivos[i].community);
                 f_ProcessaUptimeSNMP(sock, dispositivos[i].ip, dispositivos[i].port, &dest, dispositivos[i].community);
-
                 f_ProcessaSNMPCustom(sock, dispositivos[i].ip, dispositivos[i].port, dispositivos[i].community);
-
                 close(sock);
             }
             vTaskDelay(pdMS_TO_TICKS(5000));

@@ -3,6 +3,7 @@
 #include "snmp_defs.h"
 #include "snmp_lib.h"
 #include "snmp_client.h"
+#include "snmp_main.h"
 #include "../../main/include/f_devices.h"
 #include <string.h>
 #include "esp_log.h"
@@ -40,20 +41,28 @@ void f_ProcessaSNMPCustom(int sock, const char *ip, int port, const char *commun
                 sendto(sock, req, req_len, 0, (struct sockaddr *)&dest, sizeof(dest));
                 socklen_t len = sizeof(dest);
                 int r = recvfrom(sock, resp, sizeof(resp) - 1, 0, (struct sockaddr *)&dest, &len);
-
+                if (r <= 0) {
+                    float desconectado = 0xFFFFFFFF;
+                    if (Device[t->display].xQueue != NULL && f_DeviceServico(Device[t->display].Servico, SNMP_Custom)) {
+                        if(f_GetPrintDebugSNMP()){ESP_LOGW(TAG, "[%s:%d] OID: %s → Dispositivo não respondeu, marcando como DESCON (0xFFFFFFFF)", ip, port, t->oid);}
+                        xQueueOverwrite(Device[t->display].xQueue, &desconectado);
+                        xQueueOverwrite(Device[t->display].xQueueAlarme, &desconectado);
+                    }
+                    continue;
+                }
                 if (r > 0) {
                     uint8_t tipo_asn1 = parse_snmp_value_type(resp, r);
-                    ESP_LOGI("SNMP_CUSTOM", "ASN.1 type: 0x%02X", tipo_asn1);
-
+                    if(f_GetPrintDebugSNMP()){ESP_LOGI("SNMP_CUSTOM", "ASN.1 type: 0x%02X", tipo_asn1);}
                     switch (tipo_asn1) { //Pensar em como vou fornecer esses dados
                         case 0x02: { // INTEGER
                             int valor_int = 0;
                             if (parse_snmp_integer_value(resp, r, &valor_int)) {
+                                float valor_float = (float)valor_int; // Convertendo para float
                                 if (Device[t->display].xQueue != NULL && f_DeviceServico(Device[t->display].Servico, SNMP_Custom)) {
-                                    ESP_LOGI("SNMP_CUSTOM", "[%s:%d] OID: %s → %d (INTEGER) - Display(%d)", ip, port, t->oid, valor_int, t->display);    
-                                    xQueueOverwrite(Device[t->display].xQueue, &valor_int);
-                                    xQueueOverwrite(Device[t->display].xQueueAlarme, &valor_int);
-                                } else{
+                                    if(f_GetPrintDebugSNMP()){ESP_LOGI("SNMP_CUSTOM", "[%s:%d] OID: %s → %d (INTEGER) convertido para %.2f (FLOAT) - Display(%d)", ip, port, t->oid, valor_int, valor_float, t->display);}
+                                    xQueueOverwrite(Device[t->display].xQueue, &valor_float);
+                                    xQueueOverwrite(Device[t->display].xQueueAlarme, &valor_float);
+                                } else {
                                     ESP_LOGE(TAG, "Não tem fila para isso(%d)", t->display);
                                 }                                
                             }
@@ -88,13 +97,27 @@ void f_ProcessaSNMPCustom(int sock, const char *ip, int port, const char *commun
         }
 }
 
-void f_RegisterCustomTarget(const char *ip, int port, int display, const char *oid) {
+void f_RegisterCustomTarget(const char *ip, int port, int display, const char *oid, const char *oper, const char *operfact, const char * suffix) {
     if (total_custom_targets >= MAX_CUSTOM_TARGETS) return;
-
     custom_targets[total_custom_targets].ip = strdup(ip);
     custom_targets[total_custom_targets].port = port;
     custom_targets[total_custom_targets].display = display;
     custom_targets[total_custom_targets].oid = strdup(oid);
+    custom_targets[total_custom_targets].OperationFactor = atoi(operfact);
+    custom_targets[total_custom_targets].Suffix = strdup(suffix);
+    //Precisa aqui fazer a correta corelação
+
+    if(f_GetPrintDebugSNMP()){ESP_LOGW(TAG, "Operation(%s), OperFact(%s)", oper, operfact);}
+    
+    if (strcmp(oper, "divide") == 0) {
+        custom_targets[total_custom_targets].Operation = Divide;
+    } else if (strcmp(oper, "multiply") == 0) {
+        custom_targets[total_custom_targets].Operation = Multiply;
+    } else if (strcmp(oper, "none") == 0) {
+        custom_targets[total_custom_targets].Operation = None;
+    }
+   
+
     total_custom_targets++;
 }
 
@@ -126,101 +149,11 @@ const CustomTarget *f_GetCustomTargetByIndex(int index) {
     return &custom_targets[index];
 }
 
-
-
-// void f_RegisterCustomTarget(const char *ip, int port, int display) {
-//     if (total_custom_targets >= MAX_CUSTOM_TARGETS) return;
-
-//     custom_targets[total_custom_targets].ip = strdup(ip);
-//     custom_targets[total_custom_targets].port = port;
-//     custom_targets[total_custom_targets].display = display;
-//     total_custom_targets++;
-// }
-
-// int f_GetCustomDisplay(const char *ip, int port) {
-//     for (int i = 0; i < total_custom_targets; i++) {
-//         if (strcmp(custom_targets[i].ip, ip) == 0 && custom_targets[i].port == port) {
-//             return custom_targets[i].display;
-//         }
-//     }
-//     return -1;
-// }
-
-// void f_ProcessaSNMPCustom(int sock, IPInfo *device, struct sockaddr_in *dest, const char *community) {
-//     if (!device || !device->ip) {
-//         ESP_LOGW("SNMP_CUSTOM", "Dispositivo inválido");
-//         return;
-//     }
-//     ESP_LOGW("SNMP_CUSTOM", "Processando dispositivo custom %s:%d (total_oids: %d)", device->ip, device->port, device->total_oids);
-//     for (int j = 0; j < device->total_oids; j++) {
-//         if (device->oids[j].tipo != TIPO_CUSTOM) continue;
-//         uint8_t oid[32];
-//         size_t oid_len = 0;
-//         if (!parse_oid_string(device->oids[j].oid, oid, &oid_len)) {
-//             ESP_LOGW("SNMP_CUSTOM", "OID inválido: %s", device->oids[j].oid);
-//             continue;
-//         }
-//         uint8_t req[64], resp[256];
-//         int req_len = build_snmp_get(req, sizeof(req), oid, oid_len, 300 + j, community);
-//         if (req_len <= 0) continue;
-
-//         sendto(sock, req, req_len, 0, (struct sockaddr *)dest, sizeof(*dest));
-//         socklen_t len = sizeof(*dest);
-//         int r = recvfrom(sock, resp, sizeof(resp) - 1, 0, (struct sockaddr *)dest, &len);
-
-//         if (r > 0) {
-//             uint8_t tipo_asn1 = parse_snmp_value_type(resp, r);
-//             ESP_LOGI("SNMP_CUSTOM", "ASN.1 type: 0x%02X", tipo_asn1);
-//             switch (tipo_asn1) {
-//                 case 0x02: { // INTEGER
-//                     int valor_int = 0;
-//                     if (parse_snmp_integer_value(resp, r, &valor_int)) {
-//                         ESP_LOGI("SNMP_CUSTOM", "[%s:%d] OID: %s → %d (INTEGER)", device->ip, device->port, device->oids[j].oid, valor_int);
-//                     } else {
-//                         ESP_LOGW("SNMP_CUSTOM", "Falha ao interpretar INTEGER no OID %s", device->oids[j].oid);
-//                     }
-//                     break;
-//                 }
-            
-//                 case 0x04: { // STRING
-//                     char valor_str[64] = {0};
-//                     if (parse_snmp_string_value(resp, r, valor_str, sizeof(valor_str))) {
-//                         ESP_LOGI("SNMP_CUSTOM", "[%s:%d] OID: %s → %s (STRING)", device->ip, device->port, device->oids[j].oid, valor_str);
-//                     } else {
-//                         ESP_LOGW("SNMP_CUSTOM", "Falha ao interpretar STRING no OID %s", device->oids[j].oid);
-//                     }
-//                     break;
-//                 }
-            
-//                 case 0x43: { // TIMETICKS
-//                     uint32_t ticks = 0;
-//                     if (parse_snmp_uint32_value(resp, r, &ticks)) {
-//                         ESP_LOGI("SNMP_CUSTOM", "[%s:%d] OID: %s → %lu (Timeticks)", device->ip, device->port, device->oids[j].oid, ticks);
-//                     } else {
-//                         ESP_LOGW("SNMP_CUSTOM", "Falha ao interpretar TIMETICKS no OID %s", device->oids[j].oid);
-//                     }
-//                     break;
-//                 }
-            
-//                 case 0x80:  // noSuchObject
-//                 case 0x81:  // noSuchInstance
-//                 case 0x82:  // endOfMibView
-//                     ESP_LOGW("SNMP_CUSTOM", "[%s:%d] OID: %s → Sem valor (ASN.1 = 0x%02X: noSuchObject/Instance/MIB end)",
-//                              device->ip, device->port, device->oids[j].oid, tipo_asn1);
-//                     break;
-            
-//                 default:
-//                     ESP_LOGW("SNMP_CUSTOM", "Tipo ASN.1 0x%02X não tratado diretamente. Exibindo buffer bruto:", tipo_asn1);
-//                     ESP_LOG_BUFFER_HEX("SNMP_CUSTOM", resp, r);
-//                     break;
-//             }
-//             int valor_int = 0;
-
-//             if (parse_snmp_integer_value(resp, r, &valor_int)) {
-//                 ESP_LOGI("SNMP_CUSTOM", "[%s:%d] OID: %s → %d", device->ip, device->port, device->oids[j].oid, valor_int);
-                
-//             }
-
-//         }
-//     }
-// }
+const CustomTarget *f_GetCustomTargetByDisplay(int display) {
+    for (int i = 0; i < total_custom_targets; i++) {
+        if (custom_targets[i].display == display) {
+            return &custom_targets[i];
+        }
+    }
+    return NULL;
+}
