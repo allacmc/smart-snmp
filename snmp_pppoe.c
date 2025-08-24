@@ -6,6 +6,7 @@
 #include "snmp_client.h"
 #include "snmp_lib.h"
 #include "snmp_defs.h"
+#include "../enervision_manager/include/f_safefree.h"
 
 #define TAG "SNMP_PPPOE"
 
@@ -50,7 +51,7 @@ bool f_IsPPPoETarget(const char *ip, int port) {
 
 void f_LiberaPPPoETargets(void) {
     for (int i = 0; i < total_pppoe_targets; i++) {
-        free(pppoe_targets[i].ip);
+        safe_free(&pppoe_targets[i].ip);
     }
     total_pppoe_targets = 0;
 }
@@ -109,7 +110,7 @@ int16_t f_PPPoECount(int sock, struct sockaddr_in *dest, const char *communit) {
     return total_pppoe;
 }
 
-void f_ProcessaPPPoECount(int sock, const char *ip, int port, struct sockaddr_in *dest, const char *communit) {
+void f_ProcessaPPPoECount(int sock, const char *ip, int port, struct sockaddr_in *dest, const char *communit, bool PrintDebug) {
 
     int display = f_GetPPPoEDisplay(ip, port) - 1;
     if (display < 0) return;
@@ -118,8 +119,9 @@ void f_ProcessaPPPoECount(int sock, const char *ip, int port, struct sockaddr_in
     if (Device[display].xQueue != NULL && f_DeviceServico(Device[display].Servico, SNMP_PPPoE_Count)) {
         xQueueOverwrite(Device[display].xQueue, &pppoe_total);
         xQueueOverwrite(Device[display].xQueueAlarme, &pppoe_total);
-        //ESP_LOGI(TAG, "PPPoE %s:%d → %d", ip, port, pppoe_total);
+        xQueueOverwrite(Device[display].xQueueMqtt, &pppoe_total);
+        if(PrintDebug){ESP_LOGI(TAG, "PPPoE %s:%d → %d", ip, port, pppoe_total);}
     } else {
-        ESP_LOGW(TAG, "Dispositivo %s:%d (Display %d) não possui fila para PPPoE", ip, port, display + 1);
+        if(PrintDebug){ESP_LOGW(TAG, "Dispositivo %s:%d (Display %d) não possui fila para PPPoE", ip, port, display + 1);}
     }
 }

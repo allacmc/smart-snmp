@@ -12,7 +12,7 @@ int  f_GetPPPoEDisplay(const char *ip, int port);
 bool f_IsPPPoETarget(const char *ip, int port);
 void f_LiberaPPPoETargets(void);
 //void f_ProcessaPPPoECount(int sock, const char *ip, int port, struct sockaddr_in *dest);
-void f_ProcessaPPPoECount(int sock, const char *ip, int port, struct sockaddr_in *dest, const char *communit);
+void f_ProcessaPPPoECount(int sock, const char *ip, int port, struct sockaddr_in *dest, const char *communit, bool PrintDebug);
 
 #ifdef __cplusplus
 }

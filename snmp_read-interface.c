@@ -16,7 +16,7 @@ bool StopReadInterface = false;
 
 int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
         StopReadInterface = false;
-        cJSON *json = read_json_file("/snmp-interface-select.json");
+        cJSON *json = read_json_file("/config/snmp-interface-select.json");
         if (!json) return -1;
 
         int total_ips = 0;
@@ -120,7 +120,12 @@ int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos) {
         return total_ips;
 }
 
-void f_ExecutaLeituraSNMP(IPInfo *dispositivos, int total_ips) {
+void f_ExecutaLeituraSNMP(IPInfo *dispositivos, int total_ips, bool PrintDebug) {
+
+    int16_t IntervaloLeituraSNMP;
+    int16_t ret = f_KeyValueInt("IntervaloLeituraSNMP", "/config/snmp-setup.json");
+    IntervaloLeituraSNMP = (ret == INT_MAX || ret <= 0) ? 5000 : ret;
+   
     while (!StopReadInterface) {
             for (int i = 0; i < total_ips; i++) {
                 int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -129,12 +134,16 @@ void f_ExecutaLeituraSNMP(IPInfo *dispositivos, int total_ips) {
                 struct sockaddr_in dest = {.sin_family = AF_INET, .sin_port = htons(dispositivos[i].port), .sin_addr.s_addr = inet_addr(dispositivos[i].ip)};
                 f_ProcessaStatusInterface(sock, &dispositivos[i], &dest);
                 f_ProcessaTrafegoSNMP(sock, &dispositivos[i], &dest);
-                f_ProcessaPPPoECount(sock, dispositivos[i].ip, dispositivos[i].port, &dest, dispositivos[i].community);
+                f_ProcessaPPPoECount(sock, dispositivos[i].ip, dispositivos[i].port, &dest, dispositivos[i].community, PrintDebug);
                 f_ProcessaUptimeSNMP(sock, dispositivos[i].ip, dispositivos[i].port, &dest, dispositivos[i].community);
                 f_ProcessaSNMPCustom(sock, dispositivos[i].ip, dispositivos[i].port, dispositivos[i].community);
                 close(sock);
             }
-            vTaskDelay(pdMS_TO_TICKS(5000));
+            TickType_t start = xTaskGetTickCount();
+            TickType_t wait = pdMS_TO_TICKS(IntervaloLeituraSNMP); // Intervalo de leitura SNMP
+            while ((xTaskGetTickCount() - start < wait) && !StopReadInterface) {
+                vTaskDelay(pdMS_TO_TICKS(10));
+            }
     }
 }
 
@@ -143,6 +152,7 @@ void f_stopReadInterfaces() {StopReadInterface = true;}
 void f_LiberaDispositivos(IPInfo *dispositivos, int total_ips) {
     for (int i = 0; i < total_ips; i++) {
         safe_free(&dispositivos[i].ip); // libera IP
+        safe_free(&dispositivos[i].community); // libera community 👈
         for (int j = 0; j < dispositivos[i].total_oids; j++) {
             safe_free(&dispositivos[i].oids[j].oid);      // libera OID
             safe_free(&dispositivos[i].oids[j].display);  // libera display
@@ -150,6 +160,7 @@ void f_LiberaDispositivos(IPInfo *dispositivos, int total_ips) {
     }
     f_LiberaPPPoETargets();
     f_LiberaUptimeTargets();
+    f_LiberaCustomTargets();
 }
 
 int f_BuscaIndiceIP(IPInfo *dispositivos, int total, const char *ip) {

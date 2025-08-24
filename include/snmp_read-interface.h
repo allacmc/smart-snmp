@@ -16,7 +16,7 @@
 #include "snmp_defs.h"  // supondo que você tem as structs TipoSelecionado, IPInfo etc.
 
 int f_PopulaDispositivos(IPInfo *dispositivos, int max_dispositivos);
-void f_ExecutaLeituraSNMP(IPInfo *dispositivos, int total_ips);
+void f_ExecutaLeituraSNMP(IPInfo *dispositivos, int total_ips, bool PrintDebug);
 void f_LiberaDispositivos(IPInfo *dispositivos, int total_ips);
 void f_stopReadInterfaces();
 int f_BuscaIndiceIP(IPInfo *dispositivos, int total, const char *ip);

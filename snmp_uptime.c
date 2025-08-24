@@ -3,6 +3,7 @@
 #include "snmp_client.h"
 #include "snmp_defs.h"
 #include "snmp_lib.h"
+#include "../enervision_manager/include/f_safefree.h"
 #include "../../main/include/f_devices.h"
 #include <string.h>
 #include <stdlib.h>
@@ -45,7 +46,7 @@ int f_GetUptimeDisplay(const char *ip, int port) {
 
 void f_LiberaUptimeTargets(void) {
     for (int i = 0; i < total_uptime_targets; i++) {
-        free(uptime_targets[i].ip);
+        safe_free(&uptime_targets[i].ip);
     }
     total_uptime_targets = 0;
 }
@@ -67,7 +68,7 @@ esp_err_t f_GetDeviceUptime(int sock, const char *ip_address, long port, uint32_
         size_t oid_len = 0;
 
         if (!parse_oid_string(OID_UPTIME, oid, &oid_len)) {
-            ESP_LOGE(TAG, "OID de uptime inválido");
+            ESP_LOGE(TAG, "Invalid uptime OID");
             return ESP_FAIL;
         }
 
@@ -78,13 +79,13 @@ esp_err_t f_GetDeviceUptime(int sock, const char *ip_address, long port, uint32_
         socklen_t from_len = sizeof(dest);
         int r = recvfrom(sock, resp, sizeof(resp) - 1, 0, (struct sockaddr *)&dest, &from_len);
         if (r <= 0) {
-            if(PrintDebug){ESP_LOGE(TAG, "Sem resposta SNMP para uptime");}
+            if(PrintDebug){ESP_LOGE(TAG, "No SNMP response for uptime");}
             return ESP_FAIL;
         }
 
         uint32_t ticks = 0;
         if (!parse_snmp_timeticks_value(resp, r, &ticks)) {
-            ESP_LOGE(TAG, "Falha ao extrair uptime (TimeTicks)");
+            ESP_LOGE(TAG, "Failed to extract uptime (TimeTicks)");
             //ESP_LOG_BUFFER_HEXDUMP("SNMP_UPTIME", resp, r, ESP_LOG_INFO);
             return ESP_FAIL;
         }
@@ -99,20 +100,23 @@ void f_ProcessaUptimeSNMP(int sock, const char *ip, int port, struct sockaddr_in
 
     uint32_t ticks = 0;
     if (f_GetDeviceUptime(sock, ip, port, &ticks, community) != ESP_OK) {
-        if(PrintDebug){ESP_LOGE(TAG, "Falha ao consultar uptime de %s:%d", ip, port);}
+        if(PrintDebug){ESP_LOGE(TAG, "Failed to query uptime from %s:%d", ip, port);}
         uint32_t erro_uptime = 0xFFFFFFFF;
         if (Device[display].xQueue != NULL && f_DeviceServico(Device[display].Servico, SNMP_Uptime)) {
             xQueueOverwrite(Device[display].xQueue, &erro_uptime);
             xQueueOverwrite(Device[display].xQueueAlarme, &erro_uptime);
+            xQueueOverwrite(Device[display].xQueueMqtt, &erro_uptime);
         }
         return;
     }
 
     char uptime_str[64];
     f_FormatUptime(ticks, uptime_str, sizeof(uptime_str));
-    if(PrintDebug){ESP_LOGI(TAG, "[UPTIME_SEND] Enviado ticks %lu para display %d (%s)", ticks, display, uptime_str);}
+    if(PrintDebug){ESP_LOGI(TAG, "[UPTIME_SEND] Sent ticks %lu to display %d (%s)", ticks, display, uptime_str);}
     if (Device[display].xQueue != NULL && f_DeviceServico(Device[display].Servico, SNMP_Uptime)) {
         xQueueOverwrite(Device[display].xQueue, &ticks);
         xQueueOverwrite(Device[display].xQueueAlarme, &ticks);
+        xQueueOverwrite(Device[display].xQueueMqtt, &ticks);
+
     }
 }

@@ -9,6 +9,7 @@
 #include <errno.h>
 #include "../../enervision_manager/include/f_wifi.h"
 #include "../../enervision_manager/include/f_configfile.h"
+#include "../../enervision_manager/include/f_safefree.h"
 #include "cJSON.h"
 
 //#define SNMP_PORT 161
@@ -20,13 +21,13 @@ int InterfaceDiscovery = 0;
 
 esp_err_t f_ListInterfaces(const char *ip_address, long port, int timeout_val, int max_interfaces, const char *community) {
           in_addr_t addr = inet_addr(ip_address);
-          if (addr == INADDR_NONE) {ESP_LOGE(TAG, "IP inválido: %s", ip_address);return ESP_ERR_INVALID_ARG;}
+          if (addr == INADDR_NONE) {ESP_LOGE(TAG, "Invalid IP: %s", ip_address);return ESP_ERR_INVALID_ARG;}
           struct sockaddr_in dest_addr = {.sin_family = AF_INET,.sin_port = htons(port),.sin_addr.s_addr = addr};
           int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-          if (sock < 0) {ESP_LOGE(TAG, "Erro ao criar socket: errno %d", errno);return ESP_FAIL;}
+          if (sock < 0) {ESP_LOGE(TAG, "Error creating socket: errno %d", errno);return ESP_FAIL;}
           struct timeval timeout = {.tv_sec = timeout_val,.tv_usec = 0};
           if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) { ESP_LOGE(TAG, "Erro ao configurar timeout no socket: errno %d", errno); close(sock); return ESP_FAIL; }
-          ESP_LOGI(TAG, "Socket criado com sucesso (fd=%d). Community(%s), Procurando interfaces ifDescr.N até não ter resposta ou atingir o máximo de %d interfaces...", sock, community, max_interfaces);
+          ESP_LOGI(TAG, "Socket created successfully (fd=%d). Community(%s), searching for interfaces ifDescr.N until no response or reaching the maximum of %d interfaces...", sock, community, max_interfaces);
           cJSON *root = cJSON_CreateArray();
           InterfaceDiscovery = 0;
           for (int i = 1; i <= max_interfaces; i++) {
@@ -34,14 +35,14 @@ esp_err_t f_ListInterfaces(const char *ip_address, long port, int timeout_val, i
                         uint8_t descr_oid[] = { 0x2b, 0x06, 0x01, 0x02, 0x01, 0x02, 0x02, 0x01, 0x02, (uint8_t)i };
                         uint8_t descr_req[64];
                         int descr_len = build_snmp_get(descr_req, sizeof(descr_req), descr_oid, sizeof(descr_oid), i, community);
-                        if (descr_len < 0) {ESP_LOGW(TAG, "Erro ao montar pacote SNMP para ifDescr.%d", i);continue;}
+                        if (descr_len < 0) {ESP_LOGW(TAG, "Error building SNMP packet for ifDescr.%d", i);continue;}
                         sendto(sock, descr_req, descr_len, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
                         uint8_t descr_resp[256];
                         socklen_t from_len = sizeof(dest_addr);
                         int len = recvfrom(sock, descr_resp, sizeof(descr_resp) - 1, 0, (struct sockaddr *)&dest_addr, &from_len);
                         if (len < 0) {
-                            ESP_LOGW(TAG, "ifDescr.%d sem resposta", i);
-                            if (i == 1) { ESP_LOGE(TAG, "Dispositivo não respondeu à primeira interface. Encerrando scan."); InterfaceDiscovery = 0; break; }
+                            ESP_LOGW(TAG, "ifDescr.%d no response", i);
+                            if (i == 1) { ESP_LOGE(TAG, "Device did not respond to the first interface. Ending scan."); InterfaceDiscovery = 0; break; }
                             continue;
                         }
                         char iface[128] = {0};
@@ -51,7 +52,7 @@ esp_err_t f_ListInterfaces(const char *ip_address, long port, int timeout_val, i
                         uint8_t status_oid[] = { 0x2b, 0x06, 0x01, 0x02, 0x01, 0x02, 0x02, 0x01, 0x08, (uint8_t)i };
                         uint8_t status_req[64];
                         int status_len = build_snmp_get(status_req, sizeof(status_req), status_oid, sizeof(status_oid), 100 + i, community);
-                        if (status_len < 0) {ESP_LOGW(TAG, "Erro ao montar pacote SNMP para ifOperStatus.%d", i);continue;}
+                        if (status_len < 0) {ESP_LOGW(TAG, "Error building SNMP packet for ifOperStatus.%d", i);continue;}
                         sendto(sock, status_req, status_len, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
                         uint8_t status_resp[256];
                         len = recvfrom(sock, status_resp, sizeof(status_resp) - 1, 0, (struct sockaddr *)&dest_addr, &from_len);
@@ -60,7 +61,7 @@ esp_err_t f_ListInterfaces(const char *ip_address, long port, int timeout_val, i
                         if (len > 0 && parse_snmp_integer_value(status_resp, len, &oper_status)) {
                             status_str = f_GetOperStatusString(oper_status);
                         } else {
-                            ESP_LOGW(TAG, "Falha ao obter status de ifDescr.%d", i);
+                            ESP_LOGW(TAG, "Failed to get status of ifDescr.%d", i);
                         }
                     // ---------- ifType ----------
                               uint8_t type_oid[] = { 0x2b, 0x06, 0x01, 0x02, 0x01, 0x02, 0x02, 0x01, 0x03, (uint8_t)i };
@@ -103,7 +104,7 @@ esp_err_t f_ListInterfaces(const char *ip_address, long port, int timeout_val, i
                     InterfaceDiscovery++;
           }
           if (InterfaceDiscovery == 0) {
-                ESP_LOGW(TAG, "Nenhuma interface encontrada, salvando info básica mesmo assim...");
+                ESP_LOGW(TAG, "No interfaces found, saving basic info anyway...");
                 cJSON *item = cJSON_CreateObject();
                 cJSON_AddStringToObject(item, "IP", ip_address);
                 cJSON_AddNumberToObject(item, "Port", port);
@@ -114,7 +115,7 @@ esp_err_t f_ListInterfaces(const char *ip_address, long port, int timeout_val, i
                 cJSON_AddNumberToObject(item, "type", 0);
                 cJSON_AddItemToArray(root, item);
           }
-          saveJsonToFile("/ScanInterfaces.json", root);
+          saveJsonToFile("/config/ScanInterfaces.json", root);
           cJSON_Delete(root);
           close(sock);
           return ESP_OK;
@@ -128,12 +129,12 @@ esp_err_t f_GetIfOperStatusFromOID(const char *ip_address, long port, const char
           uint8_t oid[32];
           size_t oid_len = 0;
           if (!parse_oid_string(oid_str, oid, &oid_len)) {
-              ESP_LOGE(TAG, "OID inválido: %s", oid_str);
+              ESP_LOGE(TAG, "Invalid OID: %s", oid_str);
               return ESP_ERR_INVALID_ARG;
           }
 
           in_addr_t addr = inet_addr(ip_address);
-          if (addr == INADDR_NONE) {ESP_LOGE(TAG, "IP inválido: %s", ip_address);return ESP_ERR_INVALID_ARG;}
+          if (addr == INADDR_NONE) {ESP_LOGE(TAG, "Invalid IP: %s", ip_address);return ESP_ERR_INVALID_ARG;}
 
           struct sockaddr_in dest_addr = {
               .sin_family = AF_INET,
@@ -142,7 +143,7 @@ esp_err_t f_GetIfOperStatusFromOID(const char *ip_address, long port, const char
           };
 
           int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-          if (sock < 0) {ESP_LOGE(TAG, "Erro ao criar socket: errno %d", errno);return ESP_FAIL;}
+          if (sock < 0) {ESP_LOGE(TAG, "Error creating socket: errno %d", errno);return ESP_FAIL;}
 
           uint8_t request[64];
           int req_len = build_snmp_get(request, sizeof(request), oid, oid_len, 123, communit); // qualquer req_id
@@ -174,8 +175,9 @@ esp_err_t f_QueryIfStatusMulti(int sock, struct sockaddr_in *dest, const char **
         size_t oid_len = 0;
 
         if (!parse_oid_string(oids[i], oid, &oid_len)) {
-            ESP_LOGW(TAG, "OID inválido: %s", oids[i]);
-            out_status_array[i] = strdup("INVALID_OID");
+            ESP_LOGW(TAG, "Invalid OID: %s", oids[i]);
+            //out_status_array[i] = strdup("INVALID_OID");
+            out_status_array[i] = safe_strdup("INVALID_OID");
             continue;
         }
 
@@ -183,8 +185,9 @@ esp_err_t f_QueryIfStatusMulti(int sock, struct sockaddr_in *dest, const char **
         int req_len = build_snmp_get(req, sizeof(req), oid, oid_len, 100 + i, community);
 
         if (req_len <= 0) {
-            ESP_LOGW(TAG, "Falha ao montar pacote SNMP para %s", oids[i]);
-            out_status_array[i] = strdup("BUILD_FAIL");
+            ESP_LOGW(TAG, "Failed to build SNMP packet for %s", oids[i]);
+            //out_status_array[i] = strdup("BUILD_FAIL");
+            out_status_array[i] = safe_strdup("BUILD_FAIL");
             continue;
         }
 
@@ -197,11 +200,15 @@ esp_err_t f_QueryIfStatusMulti(int sock, struct sockaddr_in *dest, const char **
         int status = -1;
         if (r > 0 && parse_snmp_integer_value(resp, r, &status)) {
             const char *str = f_GetOperStatusString(status);
-            out_status_array[i] = strdup(str);
+            //out_status_array[i] = strdup(str);
+            //out_status_array[i] = strdup(str);
+            out_status_array[i] = safe_strdup(str);
         } else {
             // Aqui tratamos timeout ou erro de rede
             //ESP_LOGW(TAG, "Falha ao receber resposta SNMP para OID %s (IP: %s)", oids[i], inet_ntoa(dest->sin_addr));
-            out_status_array[i] = strdup("DESCON");
+            //out_status_array[i] = strdup("DESCON");
+            out_status_array[i] = safe_strdup("DESCON");
+
         }
     }
 
@@ -215,12 +222,12 @@ esp_err_t f_QueryTrafficMulti(int sock, struct sockaddr_in *dest, const char **o
         uint8_t oid[32];
         size_t oid_len = 0;
 
-        if (!parse_oid_string(oids[i], oid, &oid_len)) { ESP_LOGW(TAG, "OID inválido: %s", oids[i]); out_values[i] = 0xFFFFFFFF; continue; }
+        if (!parse_oid_string(oids[i], oid, &oid_len)) { ESP_LOGW(TAG, "Invalid OID: %s", oids[i]); out_values[i] = 0xFFFFFFFF; continue; }
 
         uint8_t req[64];
         int req_len = build_snmp_get(req, sizeof(req), oid, oid_len, 200 + i, community);  // ID 200+ pra evitar conflito
 
-        if (req_len <= 0) { ESP_LOGW(TAG, "Falha ao montar pacote SNMP para %s", oids[i]); out_values[i] = 0xFFFFFFFF; continue; }
+        if (req_len <= 0) { ESP_LOGW(TAG, "Failed to build SNMP packet for %s", oids[i]); out_values[i] = 0xFFFFFFFF; continue; }
 
         sendto(sock, req, req_len, 0, (struct sockaddr *)dest, sizeof(*dest));
 
@@ -239,108 +246,3 @@ esp_err_t f_QueryTrafficMulti(int sock, struct sockaddr_in *dest, const char **o
 
     return ESP_OK;
 }
-
-// int16_t f_PPPoECount(int sock, struct sockaddr_in *dest) {
-//         int16_t total_pppoe = 0;
-//         uint8_t req[64], resp[256];
-//         socklen_t from_len = sizeof(*dest);
-
-//         uint8_t current_oid[32];
-//         size_t current_oid_len = 0;
-
-//         parse_oid_string("1.3.6.1.2.1.2.2.1.2", current_oid, &current_oid_len);
-
-//         uint8_t req_id = 0x20;
-//         int max_seguro = 8192;  // ← segurança contra loop infinito
-//         int iteracoes = 0;
-//         while (true) {
-//             if (iteracoes++ > max_seguro) { ESP_LOGW("SNMP_PPP", "Loop SNMP interrompido após %d iterações (proteção de segurança)", max_seguro); total_pppoe = -1; break; }
-//             int req_len = build_snmp_getnext(req, sizeof(req), current_oid, current_oid_len, req_id++);
-//             if (req_len <= 0) { ESP_LOGW("SNMP_PPP", "Falha ao montar GETNEXT"); total_pppoe = -1; break; }
-//             bool resposta_ok = false;
-//             int r = 0;
-//             for (int tentativa = 0; tentativa < 4 && !resposta_ok; tentativa++) {
-//                     sendto(sock, req, req_len, 0, (struct sockaddr *)dest, sizeof(*dest));
-//                     r = recvfrom(sock, resp, sizeof(resp) - 1, 0, (struct sockaddr *)dest, &from_len);
-//                     if (r > 0) {
-//                         resposta_ok = true;
-//                         break;
-//                     } else {
-//                         vTaskDelay(pdMS_TO_TICKS(10));
-//                     }
-//             }
-//             if (!resposta_ok) { total_pppoe = -1; break; }
-//             char *oid_str = print_oid_readable_from_packet(resp, r);
-//             if (!oid_str) { ESP_LOGW("SNMP_PPP", "OID retornado é NULL, encerrando."); ESP_LOG_BUFFER_HEXDUMP("SNMP_RAW", resp, r, ESP_LOG_WARN); break; }
-//             if (strncmp(oid_str, "1.3.6.1.2.1.2.2.1.2", 19) != 0) break;
-//             char iface_name[128] = {0};
-//             if (parse_snmp_string_value(resp, r, iface_name, sizeof(iface_name))) {
-//                 if (strcasestr(iface_name, TERMO_PPPOE)) {
-//                     total_pppoe++;
-//                 }
-//             } else {
-//                 ESP_LOGW("SNMP_PPP", "Falha ao extrair ifDescr");
-//                 ESP_LOG_BUFFER_HEXDUMP("SNMP_RAW", resp, r, ESP_LOG_WARN);
-//             }
-
-//             size_t next_oid_len = 0;
-//             if (!parse_oid_from_packet(resp, r, current_oid, &next_oid_len)) {
-//                 ESP_LOGW("SNMP_PPP", "Falha ao extrair próximo OID");
-//                 break;
-//             }
-//             current_oid_len = next_oid_len;
-//         }
-
-//         return total_pppoe;
-// }
-
-// esp_err_t f_GetDeviceUptime(const char *ip_address, long port, uint32_t *out_ticks) {
-//         if (!ip_address || !out_ticks) return ESP_ERR_INVALID_ARG;
-
-//         int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-//         if (sock < 0) {
-//             ESP_LOGE(TAG, "Erro ao criar socket");
-//             return ESP_FAIL;
-//         }
-
-//         struct sockaddr_in dest = {
-//             .sin_family = AF_INET,
-//             .sin_port = htons(port),
-//             .sin_addr.s_addr = inet_addr(ip_address)
-//         };
-
-//         const char *OID_UPTIME = "1.3.6.1.2.1.1.3.0";
-//         uint8_t oid[32];
-//         size_t oid_len = 0;
-
-//         if (!parse_oid_string(OID_UPTIME, oid, &oid_len)) {
-//             ESP_LOGE(TAG, "OID de uptime inválido");
-//             close(sock);
-//             return ESP_FAIL;
-//         }
-
-//         uint8_t req[64], resp[256];
-//         int req_len = build_snmp_get(req, sizeof(req), oid, oid_len, 0x11);
-//         sendto(sock, req, req_len, 0, (struct sockaddr *)&dest, sizeof(dest));
-
-//         socklen_t from_len = sizeof(dest);
-//         int r = recvfrom(sock, resp, sizeof(resp) - 1, 0, (struct sockaddr *)&dest, &from_len);
-//         if (r <= 0) {
-//             ESP_LOGE(TAG, "Sem resposta SNMP para uptime");
-//             close(sock);
-//             return ESP_FAIL;
-//         }
-
-//         uint32_t ticks = 0;
-//         if (!parse_snmp_timeticks_value(resp, r, &ticks)) {
-//             ESP_LOGE(TAG, "Falha ao extrair uptime (TimeTicks)");
-//             ESP_LOG_BUFFER_HEXDUMP("SNMP_UPTIME", resp, r, ESP_LOG_INFO);
-//             close(sock);
-//             return ESP_FAIL;
-//         }
-
-//         close(sock);
-//         *out_ticks = ticks;
-       
-//         return ESP_OK;
-// }

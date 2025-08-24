@@ -129,6 +129,8 @@ void f_ProcessaTrafegoSNMP(int sock, IPInfo *device, struct sockaddr_in *dest) {
                 if (display >= 0 && Device[display].xQueue != NULL && f_DeviceServico(Device[display].Servico, SNMP_Trafego)) {
                     xQueueOverwrite(Device[display].xQueue, &trafego_data);
                     xQueueOverwrite(Device[display].xQueueAlarme, &trafego_data);
+                    xQueueOverwrite(Device[display].xQueueMqtt, &trafego_data);
+
                 }
             }
         } else {
@@ -137,6 +139,7 @@ void f_ProcessaTrafegoSNMP(int sock, IPInfo *device, struct sockaddr_in *dest) {
                 trafego_info_t erro_trafego = {.in_kbps = -1.0f, .out_kbps = -1.0f};
                 xQueueOverwrite(Device[display].xQueue, &erro_trafego);
                 xQueueOverwrite(Device[display].xQueueAlarme, &erro_trafego);
+                xQueueOverwrite(Device[display].xQueueMqtt, &erro_trafego);
             }
         }
     }

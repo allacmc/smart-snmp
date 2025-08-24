@@ -50,6 +50,11 @@ void f_ProcessaStatusInterface(int sock, IPInfo *device, struct sockaddr_in *des
             status_str[sizeof(status_str) - 1] = '\0'; // garante que está null-terminado
             xQueueOverwrite(Device[display].xQueue, &status_str);
             xQueueOverwrite(Device[display].xQueueAlarme, &status_str);
+            xQueueOverwrite(Device[display].xQueueMqtt, &status_str);
+        }
+        if (status_result[k]) {
+            vPortFree(status_result[k]);
+            status_result[k] = NULL;
         }
     }
 }

@@ -27,7 +27,6 @@ int  f_GetCustomDisplay(const char *ip, int port, const char *oid);
 void f_ProcessaSNMPCustom(int sock, const char *ip, int port, const char *community);
 const CustomTarget *f_GetCustomTargetByDisplay(int display);
 
-
 int f_GetTotalCustomTargets(void);
 const CustomTarget *f_GetCustomTargetByIndex(int index);
 
