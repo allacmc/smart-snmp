@@ -11,6 +11,7 @@
 #include "../../enervision_manager/include/f_configfile.h"
 #include "../../enervision_manager/include/f_safefree.h"
 #include "cJSON.h"
+#include "snmp_sysname.h"
 
 //#define SNMP_PORT 161
 static const char *TAG = "SNMP_CLIENT";
@@ -30,6 +31,13 @@ esp_err_t f_ListInterfaces(const char *ip_address, long port, int timeout_val, i
           ESP_LOGI(TAG, "Socket created successfully (fd=%d). Community(%s), searching for interfaces ifDescr.N until no response or reaching the maximum of %d interfaces...", sock, community, max_interfaces);
           cJSON *root = cJSON_CreateArray();
           InterfaceDiscovery = 0;
+
+          char sysname[128] = {0};
+          if (f_GetSysName(ip_address, port, timeout_val, community, sysname, sizeof(sysname))) {
+                ESP_LOGI(TAG, "SNMP device: sysName = %s", sysname);
+          } else {
+                ESP_LOGW(TAG, "Could not obtain sysName");
+          }
           for (int i = 1; i <= max_interfaces; i++) {
                     // ---------- Requisição do nome da interface ----------
                         uint8_t descr_oid[] = { 0x2b, 0x06, 0x01, 0x02, 0x01, 0x02, 0x02, 0x01, 0x02, (uint8_t)i };
@@ -93,6 +101,7 @@ esp_err_t f_ListInterfaces(const char *ip_address, long port, int timeout_val, i
                     if(PrintDebug) {ESP_LOGI(TAG, "ifDescr.%d: %s (%s) - OID(%s) - Type(%d)", i, iface, status_str, oid_readable, if_type);}
 
                     cJSON *item = cJSON_CreateObject();
+                    cJSON_AddStringToObject(item, "sysName", sysname);
                     cJSON_AddStringToObject(item, "IP", ip_address);
                     cJSON_AddNumberToObject(item, "Port", port);
                     cJSON_AddStringToObject(item, "Community", community);
