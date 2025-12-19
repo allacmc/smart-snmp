@@ -120,8 +120,9 @@ void f_ProcessaPPPoECount(int sock, const char *ip, int port, struct sockaddr_in
         xQueueOverwrite(Device[display].xQueue, &pppoe_total);
         xQueueOverwrite(Device[display].xQueueAlarme, &pppoe_total);
         xQueueOverwrite(Device[display].xQueueMqtt, &pppoe_total);
+        xQueueOverwrite(Device[display].xQueueDashzap, &pppoe_total);
         if(PrintDebug){ESP_LOGI(TAG, "PPPoE %s:%d → %d", ip, port, pppoe_total);}
     } else {
-        if(PrintDebug){ESP_LOGW(TAG, "Dispositivo %s:%d (Display %d) não possui fila para PPPoE", ip, port, display + 1);}
+        if(PrintDebug){ESP_LOGW(TAG, "Device %s:%d (Display %d) does not have queue for PPPoE", ip, port, display + 1);}
     }
 }

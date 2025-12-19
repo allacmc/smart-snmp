@@ -34,3 +34,5 @@ void f_FormatUptime(uint32_t ticks, char *out_str, size_t out_len);
 bool parse_snmp_timeticks_value(const uint8_t *packet, int length, uint32_t *out_value); 
 void mergeJsonWithReindex(cJSON *destino, cJSON *origem);
 uint8_t parse_snmp_value_type(const uint8_t *resp, size_t len);
+bool parse_snmp_first_varbind_u32(const uint8_t *buf, size_t len, uint8_t *out_type, uint32_t *out_value);
+

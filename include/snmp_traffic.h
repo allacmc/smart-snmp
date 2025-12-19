@@ -24,6 +24,6 @@ void init_traffic_history(void);
 bool calcular_taxa_trafego(const char *ip, int display, uint32_t in_atual, uint32_t out_atual, float *out_kbps_in, float *out_kbps_out);
 void f_ProcessaTrafegoSNMP(int sock, IPInfo *device, struct sockaddr_in *dest);
 bool f_RegistraOIDTrafego(IPInfo *device, const char *display, int index);
-
+void f_setPrintDebugTraffic(bool debug);
 
 #endif // SNMP_TRAFFIC_H

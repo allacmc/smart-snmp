@@ -4,6 +4,8 @@
 extern "C" {
 #endif
 
+#include <stdbool.h>
+
 typedef enum {
     Divide,
     Multiply,
@@ -29,6 +31,9 @@ const CustomTarget *f_GetCustomTargetByDisplay(int display);
 
 int f_GetTotalCustomTargets(void);
 const CustomTarget *f_GetCustomTargetByIndex(int index);
+
+void f_setPrintDebugCustom(bool valor);
+
 
 #ifdef __cplusplus
 }

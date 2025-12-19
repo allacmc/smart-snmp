@@ -7,6 +7,14 @@
 #include "lwip/sockets.h"
 #include "snmp_defs.h"
 #include "snmp_client.h"
+#include "esp_log.h"
+
+static bool PrintDebug = false;
+
+void f_setPrintDebugInterfaceStatus(bool debug) {
+    PrintDebug = debug;
+    if(PrintDebug) ESP_LOGI("SNMP", "Set SNMP interface status debug to: %s", debug ? "true" : "false");
+}
 
 bool f_RegistraOIDStatusInterface(IPInfo *device, const char *display, int index) {
     if (!device || device->total_oids >= MAX_OIDS - 1) return false;
@@ -51,6 +59,8 @@ void f_ProcessaStatusInterface(int sock, IPInfo *device, struct sockaddr_in *des
             xQueueOverwrite(Device[display].xQueue, &status_str);
             xQueueOverwrite(Device[display].xQueueAlarme, &status_str);
             xQueueOverwrite(Device[display].xQueueMqtt, &status_str);
+            xQueueOverwrite(Device[display].xQueueDashzap, &status_str);
+            if (PrintDebug) {ESP_LOGI("SNMP", "SNMP Interface %s:%d oid=%s → %s", device->ip, device->port, oids_status[k], status_str);}
         }
         if (status_result[k]) {
             vPortFree(status_result[k]);

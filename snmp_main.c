@@ -14,6 +14,10 @@
 
 #include "snmp_read-interface.h"
 #include "snmp_defs.h"
+#include "snmp_traffic.h"
+#include "snmp_status-interface.h"
+#include "snmp_custom.h"
+
 #define SNMP_PORT 161
 static const char *TAG = "SNMP_CLIENT";
 static bool StatusScan = false;
@@ -268,15 +272,15 @@ void f_startReadSnmp() {
 
 void f_ReadSnmp(void *args) {
         ESP_LOGI(TAG, "Starting automatic monitoring of SNMP interfaces");
+        PrintDebugSNMP = f_KeyStatus("DebugSNMP", "/config/setup.json");
+        f_setPrintDebugTraffic(PrintDebugSNMP);
+        f_setPrintDebugInterfaceStatus(PrintDebugSNMP);
+        f_setPrintDebugCustom(PrintDebugSNMP);
+        f_setPrintDebugSNMP_ReadInterface(PrintDebugSNMP);
+
         IPInfo dispositivos[MAX_IPS] = {0};
         int total_ips = f_PopulaDispositivos(dispositivos, MAX_IPS);
-        if (total_ips <= 0) {
-            ESP_LOGE(TAG, "No valid device found");
-            hReadInterface = NULL;
-            vTaskDelete(NULL);
-            return;
-        }
-        PrintDebugSNMP = f_KeyStatus("DebugSNMP", "/config/setup.json");
+        if (total_ips <= 0) {ESP_LOGE(TAG, "No valid device found");hReadInterface = NULL;vTaskDelete(NULL);return;}
         if(PrintDebugSNMP){debug_dispositivos(dispositivos, total_ips);}
         f_ExecutaLeituraSNMP(dispositivos, total_ips, PrintDebugSNMP);
         f_LiberaDispositivos(dispositivos, total_ips);

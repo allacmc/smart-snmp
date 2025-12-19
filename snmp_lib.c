@@ -143,7 +143,8 @@ bool parse_snmp_uint32_value(const uint8_t *buffer, int len, uint32_t *out_value
     int int_found = 0;
 
     for (int i = 0; i < len - 2; i++) {
-        if (buffer[i] == 0x02 || buffer[i] == 0x42) {  // INTEGER ou Gauge32
+        //if (buffer[i] == 0x02 || buffer[i] == 0x42) {  // INTEGER ou Gauge32
+        if (buffer[i] == 0x02 || buffer[i] == 0x41 || buffer[i] == 0x42 || buffer[i] == 0x43) {
             uint8_t val_len = buffer[i + 1];
             if (val_len == 0 || val_len > 4 || i + 2 + val_len > len) continue;
 
@@ -489,6 +490,62 @@ uint8_t parse_snmp_value_type(const uint8_t *resp, size_t len) {
 
     return 0xFF;
 }
+
+static bool ber_read_len(const uint8_t *buf, size_t len, size_t *pos, size_t *out_len) {
+    if (*pos >= len) return false;
+
+    uint8_t b = buf[(*pos)++];
+    if ((b & 0x80) == 0) { // short form
+        *out_len = b;
+        return (*pos + *out_len <= len);
+    }
+
+    uint8_t n = b & 0x7F; // number of length bytes
+    if (n == 0 || n > 4) return false;
+    if (*pos + n > len) return false;
+
+    size_t L = 0;
+    for (uint8_t i = 0; i < n; i++) {
+        L = (L << 8) | buf[(*pos)++];
+    }
+    *out_len = L;
+    return (*pos + *out_len <= len);
+}
+
+bool parse_snmp_first_varbind_u32(const uint8_t *buf, size_t len, uint8_t *out_type, uint32_t *out_value) {
+    if (!buf || len < 8 || !out_value) return false;
+    for (size_t i = 0; i + 2 < len; i++) {
+            if (buf[i] != 0x06) continue; // OID tag
+
+            size_t pos = i + 1;
+            size_t oid_len = 0;
+            if (!ber_read_len(buf, len, &pos, &oid_len)) continue;
+
+            // pula bytes do OID
+            pos += oid_len;
+            if (pos + 2 > len) continue;
+
+            uint8_t vtype = buf[pos++];
+
+            size_t vlen = 0;
+            if (!ber_read_len(buf, len, &pos, &vlen)) continue;
+
+            // agora buf[pos .. pos+vlen-1] é o valor
+            uint32_t v = 0;
+            if (vlen == 0 || vlen > 4) return false;
+
+            for (size_t b = 0; b < vlen; b++) {
+                v = (v << 8) | buf[pos + b];
+            }
+
+            if (out_type) *out_type = vtype;
+            *out_value = v;
+            return true;
+    }
+
+    return false;
+}
+
 
 //Essa função abaixo funcionava perfeito, no Scan Interface, Status Interface, PPPoE, Uptime, Trafego, só não funcionou no SNMP CUSTOM
 //

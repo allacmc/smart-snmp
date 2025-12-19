@@ -12,6 +12,13 @@
 static TrafficHistory history[MAX_TRAFFIC_HISTORY];
 static int history_count = 0;
 
+static bool PrintDebug = false;
+
+void f_setPrintDebugTraffic(bool debug) {
+    PrintDebug = debug;
+    if(PrintDebug) ESP_LOGI("SNMP", "Set SNMP traffic debug to: %s", debug ? "true" : "false");
+}
+
 void init_traffic_history(void) {
     history_count = 0;
     memset(history, 0, sizeof(history));
@@ -130,7 +137,8 @@ void f_ProcessaTrafegoSNMP(int sock, IPInfo *device, struct sockaddr_in *dest) {
                     xQueueOverwrite(Device[display].xQueue, &trafego_data);
                     xQueueOverwrite(Device[display].xQueueAlarme, &trafego_data);
                     xQueueOverwrite(Device[display].xQueueMqtt, &trafego_data);
-
+                    xQueueOverwrite(Device[display].xQueueDashzap, &trafego_data);
+                    if(PrintDebug) ESP_LOGI("SNMP", "Updated traffic data for display %d: in_kbps=%.2f, out_kbps=%.2f", display, in_kbps, out_kbps);
                 }
             }
         } else {
@@ -140,6 +148,8 @@ void f_ProcessaTrafegoSNMP(int sock, IPInfo *device, struct sockaddr_in *dest) {
                 xQueueOverwrite(Device[display].xQueue, &erro_trafego);
                 xQueueOverwrite(Device[display].xQueueAlarme, &erro_trafego);
                 xQueueOverwrite(Device[display].xQueueMqtt, &erro_trafego);
+                xQueueOverwrite(Device[display].xQueueDashzap, &erro_trafego);
+                if(PrintDebug) ESP_LOGI("SNMP", "Set traffic data to error for display %d due to invalid SNMP result", display);
             }
         }
     }

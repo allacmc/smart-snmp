@@ -8,3 +8,5 @@
 bool f_RegistraOIDStatusInterface(IPInfo *device, const char *display, int index);
 void f_ProcessaStatusInterface(int sock, IPInfo *device, struct sockaddr_in *dest);
 bool f_SnmpStatusBad(const char *status);
+void f_setPrintDebugInterfaceStatus(bool debug);
+

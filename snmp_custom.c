@@ -17,6 +17,13 @@ static CustomTarget custom_targets[MAX_CUSTOM_TARGETS];
 static int total_custom_targets = 0;
 static const char * TAG = "SNMP-CUSTOM:";
 
+static bool PrintDebugSNMP = false;
+
+void f_setPrintDebugCustom(bool valor) {
+    PrintDebugSNMP = valor;
+    if(PrintDebugSNMP){ESP_LOGI(TAG, "SNMP Custom Debug Activated!");}
+}
+
 void f_ProcessaSNMPCustom(int sock, const char *ip, int port, const char *community) {
         if (f_GetTotalCustomTargets() == 0) return; // não tem nada pra processar
         struct sockaddr_in dest = {0};
@@ -47,6 +54,8 @@ void f_ProcessaSNMPCustom(int sock, const char *ip, int port, const char *commun
                         xQueueOverwrite(Device[t->display].xQueue, &desconectado);
                         xQueueOverwrite(Device[t->display].xQueueAlarme, &desconectado);
                         xQueueOverwrite(Device[t->display].xQueueMqtt, &desconectado);
+                        xQueueOverwrite(Device[t->display].xQueueDashzap, &desconectado);
+                        if(PrintDebugSNMP){ESP_LOGW(TAG, "Marked Display(%d) as DISCONNECTED", t->display);}
                     }
                     continue;
                 }
@@ -63,6 +72,8 @@ void f_ProcessaSNMPCustom(int sock, const char *ip, int port, const char *commun
                                     xQueueOverwrite(Device[t->display].xQueue, &valor_float);
                                     xQueueOverwrite(Device[t->display].xQueueAlarme, &valor_float);
                                     xQueueOverwrite(Device[t->display].xQueueMqtt, &valor_float);
+                                    xQueueOverwrite(Device[t->display].xQueueDashzap, &valor_float);
+                                    if(PrintDebugSNMP){ESP_LOGI(TAG, "Updated Display(%d) with value %.2f", t->display, valor_float);}
                                 } else {
                                     ESP_LOGE(TAG, "Device not Designed(%d)", t->display);
                                 }                                
@@ -76,10 +87,59 @@ void f_ProcessaSNMPCustom(int sock, const char *ip, int port, const char *commun
                             }
                             break;
                         }
-                        case 0x43: { // TIMETICKS
-                            uint32_t ticks = 0;
-                            if (parse_snmp_uint32_value(resp, r, &ticks)) {
-                                ESP_LOGI(TAG, "[%s:%d] OID: %s → %lu (Timeticks)", ip, port, t->oid, ticks);
+                        case 0x41:    // Counter32
+                        case 0x42: { // Gauge32
+                            uint8_t vtype = 0;
+                            uint32_t v = 0;
+                            if (parse_snmp_first_varbind_u32(resp, r, &vtype, &v)) {
+                                float valor_float = (float)v;
+                                if (Device[t->display].xQueue != NULL && f_DeviceServico(Device[t->display].Servico, SNMP_Custom)) {
+                                    if (f_GetPrintDebugSNMP()) {
+                                        ESP_LOGI(TAG, "[%s:%d] OID: %s → %lu (Gauge32) -> %.2f - Display(%d)",
+                                                ip, port, t->oid, (unsigned long)v, valor_float, t->display);
+                                    }
+                                    xQueueOverwrite(Device[t->display].xQueue, &valor_float);
+                                    xQueueOverwrite(Device[t->display].xQueueAlarme, &valor_float);
+                                    xQueueOverwrite(Device[t->display].xQueueMqtt, &valor_float);
+                                    xQueueOverwrite(Device[t->display].xQueueDashzap, &valor_float);
+                                    if(PrintDebugSNMP){ESP_LOGI(TAG, "Updated Display(%d) with value %.2f", t->display, valor_float);}
+                                }
+                            } else {
+                                ESP_LOGW(TAG, "Failed to parse Gauge32 for OID %s", t->oid);
+                            }
+                            break;
+                        }
+
+                        case 0x43: {  // TimeTicks
+                            uint32_t v = 0;
+                            if (parse_snmp_uint32_value(resp, r, &v)) {
+                                float valor_float = (float)v;
+                                // Se for TimeTicks (0x43), o padrão SNMP é 1/100s.
+                                // Se você quer segundos no display:
+                                if (tipo_asn1 == 0x43) {
+                                    valor_float = valor_float / 100.0f;
+                                }
+                                // Aplicar operação do Custom (divide/multiply/none)
+                                if (t->Operation == Divide && t->OperationFactor > 0) {
+                                    valor_float /= (float)t->OperationFactor;
+                                } else if (t->Operation == Multiply) {
+                                    valor_float *= (float)t->OperationFactor;
+                                }
+                                if (Device[t->display].xQueue != NULL && f_DeviceServico(Device[t->display].Servico, SNMP_Custom)) {
+                                    if (f_GetPrintDebugSNMP()) {
+                                        const char *type_str =
+                                            (tipo_asn1 == 0x41) ? "Counter32" :
+                                            (tipo_asn1 == 0x42) ? "Gauge32"   :
+                                            (tipo_asn1 == 0x43) ? "TimeTicks" : "u32";
+                                        ESP_LOGI(TAG, "[%s:%d] OID: %s → %lu (%s) -> %.2f - Display(%d)",
+                                                ip, port, t->oid, (unsigned long)v, type_str, valor_float, t->display);
+                                    }
+                                    xQueueOverwrite(Device[t->display].xQueue, &valor_float);
+                                    xQueueOverwrite(Device[t->display].xQueueAlarme, &valor_float);
+                                    xQueueOverwrite(Device[t->display].xQueueMqtt, &valor_float);
+                                    xQueueOverwrite(Device[t->display].xQueueDashzap, &valor_float);
+                                    if(PrintDebugSNMP){ESP_LOGW(TAG, "Updated Display(%d) with value %.2f", t->display, valor_float);}
+                                }
                             }
                             break;
                         }

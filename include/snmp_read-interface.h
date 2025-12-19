@@ -24,4 +24,41 @@ int f_BuscaIndiceIP(IPInfo *dispositivos, int total, const char *ip);
 // int f_GetPPPoEDisplay(const char *ip, int port);
 // int f_GetUptimeDisplay(const char *ip, int port);
 
+// ================================
+// Helpers (internal)
+// ================================
+typedef enum {
+    ROW_KIND_INTERFACE = 0,
+    ROW_KIND_TRAFEGO,
+    ROW_KIND_PPPOE_LEGACY,
+    ROW_KIND_PPPOE_OID_MIKROTIK,
+    ROW_KIND_PPPOE_OID_HUAWEI,
+    ROW_KIND_UPTIME,
+    ROW_KIND_CUSTOM
+} snmp_row_kind_t;
+
+typedef struct {
+    char idx_str[8];
+
+    const char *ip;
+    int port;
+    const char *community;
+
+    const char *display_str;
+    int display_num;
+
+    const char *tipo_str;
+
+    int index; // index[...], usado para interface/trafego (pode ser -1)
+
+    // Custom opcionais
+    const char *oper;
+    const char *operfact;
+    const char *suffix;
+    const char *custom_oid;
+} snmp_row_t;
+
+void f_setPrintDebugSNMP_ReadInterface(bool debug);
+
+
 #endif // SNMP_READ_INTERFACE_H

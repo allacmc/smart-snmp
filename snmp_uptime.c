@@ -106,6 +106,7 @@ void f_ProcessaUptimeSNMP(int sock, const char *ip, int port, struct sockaddr_in
             xQueueOverwrite(Device[display].xQueue, &erro_uptime);
             xQueueOverwrite(Device[display].xQueueAlarme, &erro_uptime);
             xQueueOverwrite(Device[display].xQueueMqtt, &erro_uptime);
+            xQueueOverwrite(Device[display].xQueueDashzap, &erro_uptime);
         }
         return;
     }
@@ -117,6 +118,7 @@ void f_ProcessaUptimeSNMP(int sock, const char *ip, int port, struct sockaddr_in
         xQueueOverwrite(Device[display].xQueue, &ticks);
         xQueueOverwrite(Device[display].xQueueAlarme, &ticks);
         xQueueOverwrite(Device[display].xQueueMqtt, &ticks);
+        xQueueOverwrite(Device[display].xQueueDashzap, &ticks);
 
     }
 }
